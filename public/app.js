@@ -14,7 +14,7 @@
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Special players: a custom name font and avatar frame.
-  const vipOf = name => /feras/i.test(name || '') ? 'feras' : /supa\s*ahmed/i.test(name || '') ? 'supa' : /sultan|سلطان/i.test(name || '') ? 'sultan' : /moham+ed|محمد/i.test(name || '') ? 'mohd' : '';
+  const vipOf = name => /feras/i.test(name || '') ? 'feras' : /supa\s*ahmed/i.test(name || '') ? 'supa' : /sultan|سلطان/i.test(name || '') ? 'sultan' : /(moham+[ae]d|mohd|محمد)\s*(badi|بادي)/i.test(name || '') ? 'mohd' : '';
   const FERAS_NOTES = [
     'hey i made this game cuz of you LMAOO thanks alot broski have fun',
     'good luck in this game and just because your pro im lowering your chances of good cards (im joking)',
@@ -112,8 +112,26 @@
   // Welcome notes for certain names when they enter a room; each note is shown only once on this device.
   const NOTES = {
     feras: FERAS_NOTES.map(t => t + ' ' + EGG_NOTE),
-    sultan: ['يا هلا! بالتوفيق يا خوي، وترى برمجتها عشان تخسر 😂 أمزح'],
-    mohd: ['hi msg 310 😉'],
+    sultan: [
+      'يا هلا! بالتوفيق يا خوي، وترى برمجتها عشان تخسر 😂 أمزح',
+      'السلطان وصل! وسّعوا الطريق 🦅',
+      'يا سلطان لا تسحب واجد، الطمع يضيّع ما جمع 😂',
+      'هلا والله بالسلطان، اليوم يومك إن شاء الله',
+      'ترى الكروت تحبك اليوم… أو يمكن لا 😏',
+      'نصيحة من المبرمج: إذا شفت رقم مكرر، سوّ روحك ما شفته',
+      'يا هلا ومسهلا، القهوة عليك إذا خسرت ☕',
+      'سلطان الطاولة وصل، الباقي يلعبون على المركز الثاني 👑',
+    ],
+    mohd: [
+      'hi msg 310 😉',
+      'badi is in the building, everyone else is playing for second ⭐',
+      'msg 310 called, it said hit one more time 😉',
+      'yo badi, the deck told me it likes you today. the deck lies sometimes',
+      'reminder: staying is free, busting is embarrassing',
+      'badi pulling a flip 7 today? msg 310 says maybe 😏',
+      'welcome back badi, try not to bust in the first three cards this time',
+      'the star frame is yours only. dont let it go to your head ⭐',
+    ],
   };
   const noteKey = name => { const v = vipOf(name); return NOTES[v] ? v : ''; };
   function ferasNote() {
@@ -515,7 +533,7 @@
 
   function noteHTML() {
     const who = S.noteWho, ar = who === 'sultan';
-    const title = { feras: 'Yo Feras', sultan: 'يا هلا سلطان', mohd: 'Yo Mohammed' }[who];
+    const title = { feras: 'Yo Feras', sultan: 'يا هلا سلطان', mohd: 'Yo Badi' }[who];
     const icon = { feras: '👑', sultan: '🦅', mohd: '⭐' }[who];
     return `<div class="overlay"><div class="modal note"><div class="trophy">${icon}</div><h2 class="vipname vipname-${who}" ${ar ? 'lang="ar" dir="rtl"' : ''}>${title}</h2><p class="notetext" ${ar ? 'lang="ar" dir="rtl"' : ''}>${esc(S.note)}</p><button class="btn primary" style="width:100%" data-act="close">${ar ? 'يلا نلعب' : "Let's play"}</button></div></div>`;
   }
