@@ -7,9 +7,11 @@ Online multiplayer version of the card game Flip 7. Create a private room, share
   - `server.js` — plain Node.js + WebSockets (`ws`), for Render, a laptop or any Node host.
 - **Client:** plain HTML/CSS/JS in `public/`, no build step.
 
-## Awards ceremony
+## Awards ceremony and end credits
 
-When a game ends, the server picks six awards from statistics it tracked during play (`computeAwards` in `engine.js`) and runs the ceremony on one shared timeline (`room.js`), so every player sees the same award at the same moment and late joiners drop in mid-scene. The six scenes are time-driven canvas animations in `public/awards.js`.
+When a game ends, the server picks six awards from statistics it tracked during play (`computeAwards` in `engine.js`) and runs the ceremony on one shared timeline (`room.js`), so every player sees the same award at the same moment and late joiners drop in mid-scene. The six scenes, their synthesised sound, the credits picture and the credits tune all live in `public/awards.js`; nothing is loaded from audio or image files.
+
+After the ceremony everyone lands on the end credits: one picture with a still from each award and the final standings, which can be saved or shared. Play again marks a player as waiting; the room reopens when the host presses it.
 
 ## Run locally
 

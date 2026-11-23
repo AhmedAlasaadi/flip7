@@ -57,7 +57,7 @@ class Room {
   broadcast() {
     const base = {
       t: 'state',
-      room: { code: this.code, hostId: this.hostId, target: this.target, players: this.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar || 0, ready: p.ready, connected: p.connected })),
+      room: { code: this.code, hostId: this.hostId, target: this.target, players: this.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar || 0, ready: p.ready, again: !!p.again, connected: p.connected })),
         ceremony: this.ceremony ? { idx: this.ceremony.idx, n: this.ceremony.n, done: this.ceremony.done, elapsed: Date.now() - this.ceremony.at } : null },
       game: this.game ? this.game.view() : null,
     };
@@ -225,10 +225,14 @@ class Room {
       case 'next': if (g && g.phase === 'roundEnd' && g.startRound()) this.pump(); return;
       case 'again':
         if (!g || g.phase !== 'gameOver') return;
+        // Players say they want another game; the room only reopens when the host does.
+        // (If the host has gone, the first player to ask becomes the host.)
+        if (!this.players.some(p => p.id === this.hostId && p.connected)) this.hostId = pl.id;
+        if (pl.id !== this.hostId) { pl.again = true; return this.broadcast(); }
         clearTimeout(this.cerTimer); this.cerTimer = null; this.ceremony = null;
         this.game = null;
         this.players = this.players.filter(p => p.connected);
-        for (const p of this.players) p.ready = false;
+        for (const p of this.players) { p.ready = false; p.again = false; }
         if (!this.players.some(p => p.id === this.hostId)) this.hostId = this.players[0].id;
         return this.broadcast();
       case 'cskip': {

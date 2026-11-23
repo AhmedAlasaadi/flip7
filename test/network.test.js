@@ -116,9 +116,9 @@ const until = async (fn, what, ms = 20000) => {
   console.log(`  ok full game played over the network (${g.round} rounds, winner ${win.total})`);
 
   // Awards: six, from real stats, and the ceremony advances on a shared timeline.
-  assert.deepStrictEqual(g.awards.map(x => x.key), ['gambler', 'nerd', 'luckiest', 'unluckiest', 'champion', 'comeback']);
+  assert.deepStrictEqual(g.awards.map(x => x.key), ['gambler', 'nerd', 'luckiest', 'unluckiest', 'comeback', 'champion']);
   for (const aw of g.awards) assert(g.players.some(p => p.id === aw.pid) && aw.stat.length > 3, 'award has a real recipient and stat');
-  assert.strictEqual(g.awards[4].pid, g.winnerId);
+  assert.strictEqual(g.awards[5].pid, g.winnerId);
   const seenIdx = new Set();
   const watch = setInterval(() => { for (const x of [a, b2, c]) if (x.state.room.ceremony) seenIdx.add(x.state.room.ceremony.idx); }, 5);
   await until(() => a.state.room.ceremony && a.state.room.ceremony.idx >= 1, 'ceremony advances by itself');
@@ -128,8 +128,13 @@ const until = async (fn, what, ms = 20000) => {
   clearInterval(watch);
   console.log('  ok awards chosen from stats; ceremony synchronised, skippable (' + g.awards.map(x => x.stat).join(' | ') + ')');
 
+  // Play again: a player asking only marks them as waiting; the room reopens when the host asks.
+  c.send({ t: 'again' });
+  await until(() => a.state.room.players.find(p => p.id === c.you).again === true, 'player is marked as waiting');
+  assert(a.state.game && a.state.game.phase === 'gameOver', 'room stays on the credits until the host acts');
   a.send({ t: 'again' });
-  await until(() => c.state.game === null && c.state.room.players.every(p => !p.ready), 'back to lobby');
+  await until(() => c.state.game === null && c.state.room.players.every(p => !p.ready && !p.again), 'host reopens the room for everyone');
+  console.log('  ok play again waits for the host');
   c.send({ t: 'leave' });
   await until(() => a.state.room.players.length === 2, 'leave removes from lobby');
   a.ws.close();

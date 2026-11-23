@@ -103,7 +103,7 @@
     hangUp();
     store.del('session');
     S.room = null; S.game = null; S.invite = ''; S.modal = null; S.screen = '';
-    cerHide();
+    cerHide(); credClose();
     document.body.classList.remove('my-turn');
     try { history.replaceState(null, '', location.pathname); } catch (e) {}
     render();
@@ -177,6 +177,7 @@
     document.title = mine ? '▶ Your turn — Flip 7' : 'Flip 7 — play online with friends';
     render();
     syncCeremony();
+    syncCredits();
   }
 
   // ---------- awards ceremony ----------
@@ -196,7 +197,7 @@
     el.addEventListener('click', ev => {
       const b = ev.target.closest('[data-c]'); if (!b) return;
       if (b.dataset.c === 'skip') { if (cer.run) cer.run.skip(); if (!cer.replay) send({ t: 'cskip', idx: cer.idx }); }
-      else if (b.dataset.c === 'all') { if (cer.replay) cerHide(); else { S.cerDismissed = true; send({ t: 'cskipall' }); cerHide(); } render(); }
+      else if (b.dataset.c === 'all') { if (cer.replay) cerHide(); else { S.cerDismissed = true; send({ t: 'cskipall' }); cerHide(); } render(); syncCredits(); }
       else { S.sound = !S.sound; store.set('sound', S.sound); b.textContent = S.sound ? '🔊' : '🔇'; if (cer.run && cer.run.setMuted) cer.run.setMuted(!S.sound); }
     });
     return (cer.el = el);
@@ -217,14 +218,14 @@
     cer.run = Awards.play({
       canvas: el.querySelector('canvas'), key: a.key, data: { name: info.name, stat: a.stat, ladder: ranked }, offset: Math.max(0, offset), still: reduced(), audio: audioFor,
       onReveal: () => stat.classList.add('on'),
-      onEnd: () => { if (!cer.replay) return; const next = cer.replay.shift(); if (next == null) { cerHide(); render(); } else cerShow(next, 0); },
+      onEnd: () => { if (!cer.replay) return; const next = cer.replay.shift(); if (next == null) { cerHide(); render(); syncCredits(); } else cerShow(next, 0); },
     });
   }
   function cerHide() {
     if (cer.run) { cer.run.stop(); cer.run = null; }
     if (cer.el) cer.el.hidden = true;
     cer.idx = -9; cer.replay = null;
-    document.body.classList.remove('in-cer');
+    if (!cred.open) document.body.classList.remove('in-cer');
   }
   function syncCeremony() {
     const g = S.game, c = S.room && S.room.ceremony;
@@ -233,7 +234,103 @@
     if (cerOver() || c.idx < 0 || !g.awards[c.idx]) { cerHide(); return; }
     if (cer.idx !== c.idx) cerShow(c.idx, performance.now() - S.cerT0);
   }
-  function replayAwards(list) { if (!S.game || !S.game.awards) return; cer.replay = list.slice(1); cerShow(list[0], 0); }
+  function replayAwards(list) { if (!S.game || !S.game.awards) return; if (cred.tune) { cred.tune.stop(); cred.tune = null; } cer.replay = list.slice(1); cerShow(list[0], 0); }
+
+  // ---------- end credits ----------
+  // After the ceremony: one picture of the whole night (awards + standings) that can be saved or
+  // shared, with its own music, and Play again. The room only reopens when the host asks for it.
+  const cred = { el: null, open: false, key: '', blob: null, cards: [], tune: null, pressed: false, linger: false, said: '' };
+  function credEl() {
+    if (cred.el) return cred.el;
+    const el = document.createElement('div');
+    el.id = 'credits'; el.hidden = true; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'End credits');
+    el.innerHTML = '<div class="cr-scroll"><img id="crimg" alt=""><p class="cr-hint">Tap an award to watch it again</p></div>'
+      + '<div class="cr-bar"><p id="crmsg" aria-live="polite"></p><div class="cr-row">'
+      + '<button class="btn ghost small" data-k="save">⬇ Save picture</button><button class="btn ghost small" data-k="share">Share</button>'
+      + '<button class="btn primary small" data-k="again">Play again</button></div><div class="cr-row">'
+      + '<button class="btn ghost small" data-k="replay">▶ Ceremony</button><button class="btn ghost small" data-k="mute" aria-label="Music"></button><button class="btn ghost small" data-k="leave">Leave</button></div></div>';
+    document.body.appendChild(el);
+    const say = m => { el.querySelector('#crmsg').textContent = m; };
+    el.addEventListener('click', async ev => {
+      const img = ev.target.closest('#crimg');
+      if (img && S.game && S.game.awards) {   // which award card was tapped?
+        const r = img.getBoundingClientRect(), fx = (ev.clientX - r.left) / r.width, fy = (ev.clientY - r.top) / r.height;
+        const hit = cred.cards.find(k => fx >= k.x && fx <= k.x + k.w && fy >= k.y && fy <= k.y + k.h);
+        if (hit) replayAwards([hit.i]);
+        return;
+      }
+      const b = ev.target.closest('[data-k]'); if (!b || b.disabled) return;
+      const k = b.dataset.k;
+      if (k === 'save' && cred.blob) {
+        try { const a = document.createElement('a'); a.href = URL.createObjectURL(cred.blob); a.download = 'flip7-awards.png'; document.body.appendChild(a); a.click(); a.remove(); say('Saved to your downloads. On a phone you can also press and hold the picture.'); }
+        catch (e) { say('Press and hold the picture to save it.'); }
+      } else if (k === 'share' && cred.blob) {
+        try {
+          const file = new File([cred.blob], 'flip7-awards.png', { type: 'image/png' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Flip 7 awards', text: 'Our Flip 7 awards' }); return; }
+        } catch (e) { if (e && e.name === 'AbortError') return; }
+        say('Sharing is not available in this browser. Use Save picture and send it yourself.');
+      } else if (k === 'again') {
+        if (!S.game) { credClose(); return; }          // the room is already open: just walk in
+        cred.pressed = true; send({ t: 'again' }); credSync();
+      } else if (k === 'replay') { if (S.game && S.game.awards) replayAwards(S.game.awards.map((_, i) => i)); }
+      else if (k === 'mute') { S.sound = !S.sound; store.set('sound', S.sound); b.textContent = S.sound ? '🔊' : '🔇'; if (cred.tune) cred.tune.setMuted(!S.sound); }
+      else if (k === 'leave') { credClose(); if (ws && ws.readyState === 1) send({ t: 'leave' }); else goHome(); }
+    });
+    return (cred.el = el);
+  }
+  function credSync() {   // the Play again button and the line above it follow the room
+    if (!cred.open || !S.room) return;
+    const el = credEl(), btn = el.querySelector('[data-k=again]'), msg = el.querySelector('#crmsg'), r = S.room;
+    const me = r.players.find(p => p.id === S.you) || {}, host = r.hostId === S.you, hostName = (r.players.find(p => p.id === r.hostId) || {}).name || 'the host';
+    const waiting = r.players.filter(p => p.again && p.connected).length;
+    el.querySelector('[data-k=replay]').hidden = !S.game;
+    el.querySelector('.cr-hint').hidden = !S.game;
+    let text = '';
+    if (!S.game) { btn.disabled = false; btn.textContent = 'Join the room'; text = `${hostName} has reopened the room.`; }
+    else if (host) { btn.disabled = false; btn.textContent = 'Play again'; text = waiting ? `${waiting} ${waiting === 1 ? 'player is' : 'players are'} waiting for you to reopen the room.` : 'You are the host: Play again reopens the room for everyone.'; }
+    else if (me.again) { btn.disabled = true; btn.textContent = 'Waiting for host…'; text = `You're in. Waiting for ${hostName} to reopen the room (${waiting} ready).`; }
+    else { btn.disabled = false; btn.textContent = 'Play again'; text = waiting ? `${waiting} ready for another game.` : ''; }
+    msg.textContent = text;
+  }
+  async function credOpen() {
+    const g = S.game, r = S.room, el = credEl();
+    el.hidden = false; cred.open = true; cred.linger = false; document.body.classList.add('in-cer');
+    el.querySelector('[data-k=mute]').textContent = S.sound ? '🔊' : '🔇';
+    if (!cred.tune) cred.tune = Awards.music(audioFor);
+    const key = r.code + ':' + g.round + ':' + g.winnerId;
+    credSync();
+    if (cred.key === key) return;
+    cred.key = key; cred.pressed = false; cred.blob = null;
+    const img = el.querySelector('#crimg'); img.removeAttribute('src');
+    const players = [...g.players].sort((a, b) => b.total - a.total).map(p => { const i = pInfo(p.id); return { name: i.name, emoji: (AVATARS[i.avatar] || AVATARS[0])[0], total: p.total }; });
+    const awards = g.awards.map(a => ({ key: a.key, name: pInfo(a.pid).name, stat: a.stat }));
+    try {
+      const cv = await Awards.poster({ awards, players, sub: `Room ${r.code} · ${g.round} ${g.round === 1 ? 'round' : 'rounds'} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`, foot: location.host + ' · Flip 7 with friends' });
+      if (cred.key !== key) return;
+      cred.cards = cv._cards || [];
+      img.alt = 'Flip 7 awards. ' + awards.map(a => Awards.SCENES[a.key].title + ': ' + a.name).join('; ') + '. Final standings: ' + players.map((p, i) => (i + 1) + '. ' + p.name + ' ' + p.total).join(', ');
+      cred.blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+      if (cred.key === key && cred.blob) img.src = URL.createObjectURL(cred.blob);
+    } catch (e) { console.error('credits poster', e); }
+  }
+  function credClose() {
+    if (cred.tune) { cred.tune.stop(); cred.tune = null; }
+    if (cred.el) cred.el.hidden = true;
+    cred.open = false; cred.linger = false;
+    if (!cer.el || cer.el.hidden) document.body.classList.remove('in-cer');
+  }
+  function syncCredits() {
+    const g = S.game;
+    if (cer.replay) return;
+    if (g && g.phase === 'gameOver' && g.awards && cerOver()) { if (!cred.open) credOpen(); else { if (!cred.tune) cred.tune = Awards.music(audioFor); credSync(); } return; }
+    if (!cred.open) return;
+    // The host reopened the room. Whoever asked to play again walks straight in; anyone still
+    // looking at the credits stays there until they tap "Join the room".
+    if (S.room && !g && !cred.pressed && S.room.hostId !== S.you) { cred.linger = true; credSync(); return; }
+    credClose();
+  }
+
 
   // The pulled card flips face-up over the deck (big, for everyone), then flies to its owner.
   function reveal(d) {
@@ -430,7 +527,7 @@
     if (!g || performance.now() < S.overlayAt) return '';
     if (g.phase !== 'roundEnd' && g.phase !== 'gameOver') return '';
     const over = g.phase === 'gameOver';
-    if (over && !cerOver()) return '';   // the awards ceremony plays first
+    if (over) return '';   // game over is handled by the awards ceremony and then the end credits
     const rows = [...g.players].sort((a, b) => b.total - a.total).map((p, i) => {
       const info = pInfo(p.id);
       const how = p.status === 'busted' ? 'Busted' : (p.flip7 ? 'Flip 7! ' : '') + (p.nums.map(c => c.v).join(' + ') || 'no numbers') + (p.mods.some(c => c.k === 'x2') ? ' ×2' : '') + p.mods.filter(c => c.k === 'mod').map(c => ' +' + c.v).join('') + (p.flip7 ? ' +15' : '');
@@ -625,7 +722,7 @@
     if (ev.target.id === 'code') S.codeDraft = ev.target.value = ev.target.value.toUpperCase().replace(/[^A-Z]/g, '');
     if (ev.target.id === 'name') S.nameDraft = ev.target.value;
   });
-  document.addEventListener('keydown', ev => { if (ev.key !== 'Escape') return; if (cer.replay) { cerHide(); render(); } else if (S.modal) acts.close(); });
+  document.addEventListener('keydown', ev => { if (ev.key !== 'Escape') return; if (cer.replay) { cerHide(); render(); syncCredits(); } else if (S.modal) acts.close(); });
   addEventListener('resize', () => aimDeck(S.game));
 
   render();

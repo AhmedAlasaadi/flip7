@@ -383,12 +383,12 @@ class Game {
     const sad = [plural(p.stats.busts, 'bust'), p.stats.lost && `${p.stats.lost} points lost`, p.stats.frozen && `frozen ${plural(p.stats.frozen, 'time')}`].filter(Boolean);
     add('unluckiest', p, sad.join(' · '));
 
-    p = P.find(q => q.id === this.winner);
-    add('champion', p, `Won with ${p.total} points in ${plural(this.round, 'round')}`);
-
     p = best(climb, closed, q => last(q.stats.rounds), q => q.total);
     add('comeback', p, climb(p) > 0 ? `Climbed from ${ord(Math.max(...p.stats.ranks))} place to ${ord(last(p.stats.ranks))}`
       : closed(p) > 0 ? `Closed a ${closed(p)}-point gap on the leader` : `Best closing round: +${last(p.stats.rounds)}`);
+
+    p = P.find(q => q.id === this.winner);
+    add('champion', p, `Won with ${p.total} points in ${plural(this.round, 'round')}`);
     return out;
   }
 
