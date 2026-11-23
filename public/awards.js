@@ -713,5 +713,5 @@ window.Awards = (() => {
     };
   }
 
-  return { SCENES, DUR, play, frame, ORDER: ['gambler', 'nerd', 'luckiest', 'unluckiest', 'champion', 'comeback'] };
+  return { SCENES, DUR, play, frame, ORDER: ['gambler', 'nerd', 'luckiest', 'unluckiest', 'comeback', 'champion'] };
 })();
