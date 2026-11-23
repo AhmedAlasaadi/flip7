@@ -107,15 +107,21 @@
     render();
   }
 
-  // One of three notes for Feras each time he enters a room; each is shown only once on this device.
+  // Welcome notes for certain names when they enter a room; each note is shown only once on this device.
+  const NOTES = {
+    feras: FERAS_NOTES.map(t => t + ' ' + EGG_NOTE),
+    sultan: ['يا هلا! بالتوفيق يا خوي، وترى برمجتها عشان تخسر 😂 أمزح'],
+  };
+  const noteKey = name => /feras/i.test(name || '') ? 'feras' : /sultan|سلطان/i.test(name || '') ? 'sultan' : '';
   function ferasNote() {
-    if (vipOf(store.get('name')) !== 'feras') return;
-    const seenNotes = store.get('ferasNotes') || [];
-    const left = FERAS_NOTES.map((_, i) => i).filter(i => !seenNotes.includes(i));
+    const who = noteKey(store.get('name'));
+    if (!who) return;
+    const seenNotes = store.get(who + 'Notes') || [];
+    const left = NOTES[who].map((_, i) => i).filter(i => !seenNotes.includes(i));
     if (!left.length) return;
     const pick = left[Math.floor(Math.random() * left.length)];
-    store.set('ferasNotes', [...seenNotes, pick]);
-    S.note = FERAS_NOTES[pick] + ' ' + EGG_NOTE;
+    store.set(who + 'Notes', [...seenNotes, pick]);
+    S.note = NOTES[who][pick]; S.noteWho = who;
     S.modal = 'note';
   }
 
@@ -351,7 +357,9 @@
   }
 
   function noteHTML() {
-    return `<div class="overlay"><div class="modal note"><div class="trophy">👑</div><h2 class="vipname vipname-feras">Yo Feras</h2><p class="notetext">${esc(S.note)}</p><button class="btn primary" style="width:100%" data-act="close">Let's play</button></div></div>`;
+    const ar = S.noteWho === 'sultan';
+    const head = ar ? '<h2 lang="ar" dir="rtl">يا هلا سلطان</h2>' : '<h2 class="vipname vipname-feras">Yo Feras</h2>';
+    return `<div class="overlay"><div class="modal note"><div class="trophy">👑</div>${head}<p class="notetext" ${ar ? 'lang="ar" dir="rtl"' : ''}>${esc(S.note)}</p><button class="btn primary" style="width:100%" data-act="close">${ar ? 'يلا نلعب' : "Let's play"}</button></div></div>`;
   }
 
   function overlayHTML(g) {
