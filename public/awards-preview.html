@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0918"><title>Flip 7 — Award Studio Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark;font-family:Fredoka,system-ui,sans-serif;background:#090b19;color:#f9f4e6}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 5%,#27214f,#090b19 60%);padding:24px}
+main{max-width:1180px;margin:auto}header{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+.eyebrow{color:#f5c76c;font-size:11px;letter-spacing:.24em;font-weight:700}h1{font-family:Bangers,Impact,sans-serif;font-weight:400;letter-spacing:.05em;font-size:clamp(33px,5vw,55px);margin:6px 0}
+p{color:#aeb5cf;margin:0 0 18px}a{color:#f8ca77}
+.studio{display:grid;grid-template-columns:minmax(280px,720px) minmax(240px,1fr);gap:22px;align-items:start;margin-top:18px}
+.screen{position:relative;overflow:hidden;border:2px solid #c78f50;border-radius:20px;box-shadow:0 25px 90px #0009,0 0 38px #e2a9662d;background:#100b1c;aspect-ratio:9/10}
+.screen canvas{width:100%;height:100%;display:block}
+.overlay{position:absolute;top:0;left:0;right:0;text-align:center;background:linear-gradient(#080915dc,transparent);padding:20px 12px 45px;pointer-events:none}
+.overlay small{font-size:11px;letter-spacing:.24em;font-weight:700;color:#eab966}.overlay h2{font-size:clamp(27px,3.6vw,45px);font-family:Bangers,Impact,sans-serif;letter-spacing:.07em;margin:6px 0;color:#fff0c4;text-shadow:0 3px 14px #000}
+.result{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);border:1px solid #f5cb75;background:#171126df;border-radius:12px;padding:9px 14px;font-size:13px;min-width:230px;max-width:94%;text-align:center;opacity:0;transition:opacity .4s}.result.on{opacity:1}
+.panel{border:1px solid #504263;border-radius:18px;padding:20px;background:#171429db;display:flex;flex-direction:column;gap:14px}
+.panel label{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#ddc5a2;font-weight:700}
+.panel input{width:100%;background:#0b0c1b;color:#fff;border:1px solid #625676;border-radius:9px;font:inherit;padding:10px}
+.list{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{font:600 13px Fredoka,sans-serif;border:1px solid #645472;background:#27213a;color:#eee2d9;border-radius:10px;padding:11px 8px;cursor:pointer}
+button:hover{border-color:#ffce82;background:#41314e}button.selected{background:#655029;border-color:#ffdb9a;color:#fff8df}
+.buttons{display:flex;flex-wrap:wrap;gap:8px}.buttons button{flex:1}.primary{background:#d8a04d;color:#1b0c24;border-color:#ffdc94}.details{color:#aeb5cf;font-size:13px;line-height:1.5}.note{font-size:12px;color:#8e91af}
+@media(max-width:790px){body{padding:12px}.studio{grid-template-columns:1fr}.screen{max-height:75vh;aspect-ratio:4/5}.panel{padding:15px}}
+@media(prefers-reduced-motion:reduce){.result{transition:none}}
+</style></head>
+<body><main>
+<header><div><div class="eyebrow">FLIP 7 · ART DIRECTION EXPERIMENT</div><h1>THE AWARD STUDIO</h1><p>Preview every custom animated reveal without playing a full match.</p></div><a href="./">← Back to game</a></header>
+<div class="studio"><section class="screen" aria-label="Cinematic animation preview">
+<canvas id="stage"></canvas><div class="overlay"><small>THE AFTERPARTY · LEGENDARY REVEAL</small><h2 id="title">THE GAMBLER</h2></div>
+<div class="result" id="result"></div></section>
+<aside class="panel">
+<div><label for="username">Featured player</label><input id="username" maxlength="35" value="SUPA AHMED" autocomplete="off"></div>
+<div><label>Choose a reveal</label><div id="scenes" class="list"></div></div>
+<div class="buttons"><button class="primary" id="play">▶ Replay</button><button id="skip">⏭ Reveal</button><button id="mute">🔊 Sound</button></div>
+<div class="details" id="description">Casino reels resolve the name character by character, followed by the jackpot.</div>
+<div class="note">Preview-only page. Uses the same animation code as live multiplayer. No game or room data is changed.</div>
+</aside></div></main>
+<script src="awards.js"></script><script src="award-studio.js"></script>
+<script>
+(function(){
+  const meta={
+    gambler:['🎰','The Gambler','Casino reels reveal each letter before the jackpot erupts.'],
+    nerd:['🤓','The Safe Nerd','Illustrated professor character, animated spectacles and lens reflection.'],
+    luckiest:['🍀','The Luckiest','Emerald botanical medallion, unfurling vines and magical particles.'],
+    unluckiest:['💀','The Unluckiest','A cinematic gothic grave scene, coffin burial and tombstone reveal.'],
+    comeback:['🔥','The Comeback Kid','Camera follows the fire climbing a ranking ladder; rivals fall away.'],
+    champion:['👑','The Champion','Regal throne, illuminated gemstones and a cinematic royal name reveal.']
+  };
+  const order=['gambler','nerd','luckiest','unluckiest','comeback','champion'];
+  const $=id=>document.getElementById(id);
+  let key='gambler',run=null,ac=null,muted=false,serial=0;
+  const buttons={};
+  for(const k of order){const b=document.createElement('button');b.textContent=meta[k][0]+' '+meta[k][1];b.addEventListener('click',()=>{key=k;refresh()});$('scenes').appendChild(b);buttons[k]=b}
+  function audio(){if(muted)return null;if(!ac)try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){return null};if(ac.state!=='running')ac.resume().catch(()=>{});return ac}
+  function refresh(){
+    if(run)run.stop();run=null;serial++;const epoch=serial;
+    Object.keys(buttons).forEach(k=>buttons[k].classList.toggle('selected',k===key));
+    $('title').textContent=meta[key][1].toUpperCase();$('description').textContent=meta[key][2];$('result').classList.remove('on');
+    const currentName=$('username').value.trim()||'SUPA AHMED';
+    const ranked=[{name:currentName,me:true},{name:'FERAS',me:false},{name:'SULTAN',me:false},{name:'MOHAMMED',me:false}];
+    run=Awards.play({canvas:$('stage'),key,data:{name:currentName,stat:'Legendary performance',ladder:ranked},offset:0,audio,
+      still:window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      onReveal:()=>{if(epoch!==serial)return;$('result').textContent=meta[key][0]+' '+currentName+' · LEGENDARY PERFORMANCE';$('result').classList.add('on');}});
+  }
+  $('play').addEventListener('click',refresh);
+  $('skip').addEventListener('click',()=>run&&run.skip());
+  $('mute').addEventListener('click',()=>{muted=!muted;$('mute').textContent=muted?'🔇 Muted':'🔊 Sound';if(run&&run.setMuted)run.setMuted(muted)});
+  $('username').addEventListener('change',refresh);
+  window.addEventListener('pagehide',()=>{if(run)run.stop();if(ac)ac.close()});
+  refresh();
+})();
+</script></body></html>
