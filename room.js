@@ -1,0 +1,217 @@
+'use strict';
+// One game room: lobby, players, turn pump, reconnects. Transport-agnostic so the
+// same logic runs on the Node server (server.js) and on Cloudflare (worker/index.js).
+// A "conn" is any object with send(string) and close().
+const { Game } = require('./engine');
+
+const MAX_PLAYERS = 12;
+const rid = n => {
+  const a = new Uint8Array(n);
+  globalThis.crypto.getRandomValues(a);
+  return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+};
+const cleanName = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 16) || 'Player';
+const tx = (conn, msg) => { try { if (conn) conn.send(JSON.stringify(msg)); } catch (e) {} };
+
+class Room {
+  constructor(code, opts = {}) {
+    this.code = code;
+    this.opts = opts;
+    this.stepMs = opts.stepMs == null ? 950 : opts.stepMs;   // pause between automatic flips
+    this.awayMs = opts.awayMs == null ? 20000 : opts.awayMs; // grace before a disconnected player is auto-played
+    this.players = [];
+    this.hostId = null;
+    this.target = 200;
+    this.game = null;
+    this.stepTimer = null;
+    this.awayTimer = null;
+    this.touched = Date.now();
+  }
+
+  snapshot() {
+    return {
+      code: this.code, hostId: this.hostId, target: this.target,
+      players: this.players.map(p => ({ id: p.id, token: p.token, name: p.name, ready: p.ready, left: !!p.left })),
+      game: this.game ? this.game.dump() : null,
+    };
+  }
+
+  static restore(d, opts) {
+    const r = new Room(d.code, opts);
+    r.hostId = d.hostId; r.target = d.target;
+    r.players = d.players.map(p => ({ ...p, connected: false, conn: null }));
+    r.game = d.game ? Game.load(d.game) : null;
+    return r;
+  }
+
+  anyConnected() { return this.players.some(p => p.connected); }
+
+  broadcast() {
+    const base = {
+      t: 'state',
+      room: { code: this.code, hostId: this.hostId, target: this.target, players: this.players.map(p => ({ id: p.id, name: p.name, ready: p.ready, connected: p.connected })) },
+      game: this.game ? this.game.view() : null,
+    };
+    for (const p of this.players) if (p.conn) tx(p.conn, { ...base, you: p.id });
+    this.touched = Date.now();
+    if (this.opts.onSave) this.opts.onSave(this.snapshot());
+  }
+
+  pump() {
+    if (this.stepTimer) return;
+    const tick = () => {
+      this.stepTimer = null;
+      if (!this.game) return;
+      const r = this.game.step();
+      this.broadcast();
+      if (r === 'more') this.stepTimer = setTimeout(tick, this.stepMs);
+      else this.watchAway();
+    };
+    tick();
+  }
+
+  // If the game is waiting on someone who is disconnected, play for them after a grace period.
+  watchAway() {
+    clearTimeout(this.awayTimer);
+    this.awayTimer = null;
+    const g = this.game;
+    if (!g) return;
+    const pid = g.current();
+    if (!pid) return;
+    const pl = this.players.find(p => p.id === pid);
+    if (pl && pl.connected) return;
+    this.awayTimer = setTimeout(() => {
+      this.awayTimer = null;
+      if (this.game !== g || g.current() !== pid) return;
+      const still = this.players.find(p => p.id === pid);
+      if (still && still.connected) return;
+      if (g.phase === 'turn') g.stay(pid);
+      else if (g.phase === 'choose') {
+        const v = g.view().chooser;
+        g.choose(pid, v.targets.includes(pid) ? pid : v.targets[0]);
+      }
+      this.pump();
+    }, pl && pl.left ? 1200 : this.awayMs);
+  }
+
+  removeFromLobby(pl) {
+    this.players = this.players.filter(p => p !== pl);
+    if (!this.players.length) { this.destroy(); return; }
+    if (this.hostId === pl.id) this.hostId = this.players[0].id;
+    this.broadcast();
+  }
+
+  destroy() {
+    clearTimeout(this.stepTimer); clearTimeout(this.awayTimer);
+    for (const p of this.players) clearTimeout(p.dropTimer);
+    if (this.opts.onEmpty) this.opts.onEmpty(this);
+  }
+
+  // In the lobby, a player who stays disconnected for a few seconds loses the seat.
+  armLobbyDrops() {
+    if (this.game) return;
+    for (const p of this.players) {
+      if (p.connected || p.dropTimer) continue;
+      p.dropTimer = setTimeout(() => { p.dropTimer = null; if (!p.connected && !this.game) this.removeFromLobby(p); }, 8000);
+    }
+  }
+
+  attach(conn, pl) {
+    if (pl.conn && pl.conn !== conn) { pl.conn.player = null; pl.conn.room = null; try { pl.conn.close(); } catch (e) {} }
+    clearTimeout(pl.dropTimer); pl.dropTimer = null;
+    pl.conn = conn; pl.connected = true; pl.left = false;
+    conn.room = this; conn.player = pl;
+    tx(conn, { t: 'joined', code: this.code, you: pl.id, token: pl.token });
+    this.broadcast();
+    this.armLobbyDrops();
+    if (this.game && this.game.phase === 'auto' && !this.stepTimer) this.pump();   // resume after a restore
+    else this.watchAway();
+  }
+
+  join(conn, m, creating) {
+    if (m.token) {
+      const old = this.players.find(p => p.token === m.token);
+      if (old) return this.attach(conn, old);
+    }
+    if (this.game) return tx(conn, { t: 'error', code: 'started', msg: 'That game has already started.' });
+    if (this.players.length >= MAX_PLAYERS) return tx(conn, { t: 'error', code: 'full', msg: 'That room is full.' });
+    const pl = { id: rid(4), token: rid(12), name: cleanName(m.name), ready: false, connected: true, conn: null };
+    this.players.push(pl);
+    if (creating || !this.hostId) this.hostId = pl.id;
+    this.attach(conn, pl);
+  }
+
+  drop(conn) {
+    const pl = conn.player;
+    if (!pl || pl.conn !== conn) return;
+    pl.conn = null; pl.connected = false;
+    this.broadcast();
+    if (!this.game) this.armLobbyDrops(); else this.watchAway();
+  }
+
+  handle(conn, m) {
+    const pl = conn.player, g = this.game;
+    switch (m.t) {
+      case 'ready':
+        if (g) return;
+        pl.ready = !!m.ready;
+        return this.broadcast();
+      case 'config': {
+        if (g || this.hostId !== pl.id) return;
+        const t = Number(m.target);
+        if ([100, 150, 200, 300].includes(t)) this.target = t;
+        return this.broadcast();
+      }
+      case 'start':
+        if (g || this.hostId !== pl.id) return;
+        if (this.players.length < 2) return tx(conn, { t: 'error', msg: 'You need at least 2 players.' });
+        if (this.players.some(p => p.id !== this.hostId && !p.ready)) return tx(conn, { t: 'error', msg: 'Everyone needs to be ready first.' });
+        this.game = new Game(this.players.map(p => ({ id: p.id, name: p.name })), { target: this.target });
+        this.game.startRound();
+        return this.pump();
+      case 'hit': if (g && g.hit(pl.id)) this.pump(); return;
+      case 'stay': if (g && g.stay(pl.id)) this.pump(); return;
+      case 'target': if (g && g.choose(pl.id, String(m.pid))) this.pump(); return;
+      case 'next': if (g && g.phase === 'roundEnd' && g.startRound()) this.pump(); return;
+      case 'again':
+        if (!g || g.phase !== 'gameOver') return;
+        this.game = null;
+        this.players = this.players.filter(p => p.connected);
+        for (const p of this.players) p.ready = false;
+        if (!this.players.some(p => p.id === this.hostId)) this.hostId = this.players[0].id;
+        return this.broadcast();
+      case 'leave':
+        conn.room = null; conn.player = null;
+        pl.conn = null; pl.connected = false; pl.left = true;
+        tx(conn, { t: 'left' });
+        if (!g) this.removeFromLobby(pl);
+        else { this.broadcast(); this.watchAway(); }
+        return;
+    }
+  }
+}
+
+// Routes one client message. reg = { get(): Room|null, set(room), opts }.
+function dispatch(conn, m, code, reg) {
+  if (!m || typeof m.t !== 'string') return;
+  if (m.t === 'ping') return tx(conn, { t: 'pong' });
+  if (!conn.player) {
+    if (m.t === 'create') {
+      if (reg.get()) return tx(conn, { t: 'error', code: 'taken', msg: 'That room code is already in use.' });
+      const room = new Room(code, reg.opts);
+      reg.set(room);
+      return room.join(conn, m, true);
+    }
+    if (m.t === 'join') {
+      const room = reg.get();
+      if (!room) return tx(conn, { t: 'error', code: 'noroom', msg: 'Room not found. Check the code and try again.' });
+      return room.join(conn, m);
+    }
+    return;
+  }
+  try { conn.room.handle(conn, m); } catch (e) { console.error('handler error', m.t, e); }
+}
+
+const validCode = c => /^[A-HJ-NP-Z]{4}$/.test(c || '');
+
+module.exports = { Room, dispatch, validCode };

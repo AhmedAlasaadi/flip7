@@ -2,7 +2,9 @@
 
 Online multiplayer version of the card game Flip 7. Create a private room, share the link, play in the browser on desktop or mobile.
 
-- **Server:** Node.js + WebSockets (`ws`). All game state lives on the server (`engine.js` holds the rules, `server.js` the rooms and networking).
+- **Rules:** `engine.js`. **Rooms, lobby, turns, reconnects:** `room.js`. Both are shared by two interchangeable servers:
+  - `worker/index.js` — Cloudflare Workers + Durable Objects (one object per room; rooms are saved, so they survive restarts).
+  - `server.js` — plain Node.js + WebSockets (`ws`), for Render, a laptop or any Node host.
 - **Client:** plain HTML/CSS/JS in `public/`, no build step.
 
 ## Run locally
@@ -12,6 +14,16 @@ npm install
 npm start        # http://localhost:3000
 npm test         # rules tests + a full game played over real WebSockets
 ```
+
+## Deploy (free) on Cloudflare
+
+Either connect the repo in the Cloudflare dashboard (Workers & Pages → Create → import this repository; deploy command `npx wrangler deploy`), or from a terminal in this folder:
+
+```
+npx wrangler deploy
+```
+
+`wrangler.jsonc` holds the whole configuration. Test locally with `npx wrangler dev`.
 
 ## Deploy (free) on Render
 

@@ -1,0 +1,8 @@
+{
+  "name": "flip7",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-10-01",
+  "assets": { "directory": "./public" },
+  "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "RoomDO" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomDO"] }]
+}

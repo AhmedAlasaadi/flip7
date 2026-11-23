@@ -12,43 +12,58 @@
   const urlRoom = () => (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
 
   const S = {
-    conn: 'connecting', room: null, game: null, you: null, err: '',
+    room: null, game: null, you: null, err: '',
     screen: '', modal: null, overlayAt: 0, fresh: true, lastSeq: 0, sound: store.get('sound') !== false,
-    invite: urlRoom(), pendingJoin: null,
+    invite: urlRoom(), creating: null,
   };
   const seen = new Map();   // card uid -> first time rendered (drives the flip animation)
   const bustSeen = new Set();
 
   // ---------- networking ----------
-  let ws = null, retry = 0, pingTimer = null;
+  // One socket per room: /ws?room=CODE. Opened when creating/joining, kept alive
+  // with automatic reconnects (the saved token restores the seat).
+  const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const randomCode = () => Array.from({ length: 4 }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
+  let ws = null, retry = 0, pingTimer = null, wantCode = null, firstMsg = null, retryTimer = null;
   const send = m => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); };
 
-  function connect() {
-    S.conn = 'connecting';
-    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
-    ws.onopen = () => {
-      S.conn = 'open'; retry = 0; S.fresh = true;
+  function hangUp() {
+    wantCode = null; firstMsg = null;
+    clearTimeout(retryTimer); clearInterval(pingTimer);
+    if (ws) { const old = ws; ws = null; old.onclose = null; try { old.close(); } catch (e) {} }
+    $('#net').hidden = true;
+  }
+
+  function openRoom(code, msg) {
+    hangUp();
+    wantCode = code; firstMsg = msg; retry = 0;
+    dial();
+  }
+
+  function dial() {
+    const my = ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?room=' + wantCode);
+    my.onopen = () => {
+      retry = 0; S.fresh = true;
       $('#net').hidden = true;
       const sess = store.get('session');
-      if (sess && (!S.invite || S.invite === sess.code)) send({ t: 'join', code: sess.code, token: sess.token, name: sess.name });
-      else if (S.pendingJoin) { send(S.pendingJoin); }
-      S.pendingJoin = null;
+      if (firstMsg) send(firstMsg);
+      else if (sess && sess.code === wantCode) send({ t: 'join', token: sess.token, name: sess.name });
+      firstMsg = null;
       clearInterval(pingTimer);
       pingTimer = setInterval(() => send({ t: 'ping' }), 20000);
-      render();
     };
-    ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMsg(m); };
-    ws.onclose = () => {
-      S.conn = 'closed';
+    my.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMsg(m); };
+    my.onclose = () => {
+      if (ws !== my || !wantCode) return;
       clearInterval(pingTimer);
       if (S.room) $('#net').hidden = false;
-      setTimeout(connect, Math.min(5000, 600 * ++retry));
+      retryTimer = setTimeout(dial, Math.min(5000, 500 * ++retry));
     };
   }
 
   function onMsg(m) {
     if (m.t === 'joined') {
-      S.you = m.you; S.err = '';
+      S.you = m.you; S.err = ''; S.creating = null;
       store.set('session', { code: m.code, token: m.token, name: store.get('name') || '' });
       S.invite = m.code;
       try { history.replaceState(null, '', '?room=' + m.code); } catch (e) {}
@@ -59,8 +74,10 @@
       S.fresh = false;
       render();
     } else if (m.t === 'error') {
+      if (m.code === 'taken' && S.creating) { openRoom(randomCode(), { t: 'create', name: S.creating }); return; }
       if (!S.room) {
         if (m.code === 'noroom' || m.code === 'started') store.del('session');
+        hangUp();
         S.err = m.msg; S.screen = ''; render();
       } else callout(m.msg, 'info');
     } else if (m.t === 'left') {
@@ -69,6 +86,7 @@
   }
 
   function goHome() {
+    hangUp();
     store.del('session');
     S.room = null; S.game = null; S.invite = ''; S.modal = null; S.screen = '';
     try { history.replaceState(null, '', location.pathname); } catch (e) {}
@@ -350,21 +368,17 @@
     store.set('name', n);
     return n;
   }
-  function request(m) {
-    S.err = '';
-    if (ws && ws.readyState === 1) send(m);
-    else { S.pendingJoin = m; S.err = 'Connecting to the server…'; render(); }
-  }
   const inviteLink = () => location.origin + location.pathname + '?room=' + S.room.code;
 
   const acts = {
-    create() { const n = readName(); if (n) { store.del('session'); request({ t: 'create', name: n }); } },
+    create() { const n = readName(); if (!n) return; store.del('session'); S.err = ''; S.creating = n; openRoom(randomCode(), { t: 'create', name: n }); },
     join() {
       const n = readName(); if (!n) return;
       const code = S.invite || (($('#code') || {}).value || '').toUpperCase().trim();
       if (code.length !== 4) { S.err = 'Enter the 4-letter room code.'; render(); return; }
-      store.del('session');
-      request({ t: 'join', code, name: n });
+      if (!/^[A-HJ-NP-Z]{4}$/.test(code)) { S.err = 'Room not found. Check the code and try again.'; render(); return; }
+      store.del('session'); S.err = ''; S.creating = null;
+      openRoom(code, { t: 'join', name: n });
     },
     noinvite() { S.invite = ''; S.err = ''; S.screen = ''; try { history.replaceState(null, '', location.pathname); } catch (e) {} render(); },
     ready() { const me = S.room.players.find(p => p.id === S.you); send({ t: 'ready', ready: !me.ready }); },
@@ -385,7 +399,7 @@
     rules() { S.modal = 'rules'; S.screen = ''; render(); },
     leave() { S.modal = 'leave'; render(); },
     close() { S.modal = null; S.screen = ''; render(); },
-    'leave-yes'() { S.modal = null; send({ t: 'leave' }); if (!ws || ws.readyState !== 1) goHome(); },
+    'leave-yes'() { S.modal = null; if (ws && ws.readyState === 1) send({ t: 'leave' }); else goHome(); },
     sound() { S.sound = !S.sound; store.set('sound', S.sound); render(); },
   };
 
@@ -407,5 +421,6 @@
   document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && S.modal) acts.close(); });
 
   render();
-  connect();
+  const saved = store.get('session');
+  if (saved && saved.code && (!S.invite || S.invite === saved.code)) openRoom(saved.code, null);
 })();

@@ -5,14 +5,17 @@ const { spawn } = require('child_process');
 const path = require('path');
 const WebSocket = require('ws');
 
+// TEST_URL=host:port runs the same checks against an already-running server (e.g. wrangler dev).
+const EXT = process.env.TEST_URL;
 const PORT = 4100 + Math.floor(Math.random() * 500);
-const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, STEP_MS: 3, AWAY_MS: 150 }, stdio: ['ignore', 'pipe', 'inherit'] });
+const HOST = EXT || `127.0.0.1:${PORT}`;
+const srv = EXT ? { kill() {}, stdout: { once(_, r) { r(); } } } : spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, STEP_MS: 3, AWAY_MS: 150 }, stdio: ['ignore', 'pipe', 'inherit'] });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function client(name) {
   const c = { name, state: null, you: null, token: null, errors: [], bot: true };
-  c.connect = () => new Promise(res => {
-    c.ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws`);
+  c.connect = code => new Promise(res => {
+    c.ws = new WebSocket(`ws://${HOST}/ws?room=${code}`);
     c.ws.on('open', res);
     c.ws.on('message', raw => {
       const m = JSON.parse(raw);
@@ -44,23 +47,33 @@ const until = async (fn, what, ms = 20000) => {
 
 (async () => {
   await new Promise(r => srv.stdout.once('data', r));
-  const res = await fetch(`http://127.0.0.1:${PORT}/`);
+  const res = await fetch(`http://${HOST}/`);
   assert.strictEqual(res.status, 200);
   assert((await res.text()).includes('Flip 7'));
-  assert.strictEqual((await fetch(`http://127.0.0.1:${PORT}/../server.js`)).status, 404);
-  assert.strictEqual((await fetch(`http://127.0.0.1:${PORT}/healthz`)).status, 200);
+  assert.strictEqual((await fetch(`http://${HOST}/server.js`)).status, 404);
+  assert.strictEqual((await fetch(`http://${HOST}/healthz`)).status, 200);
 
+  const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const pick = () => Array.from({ length: 4 }, () => L[Math.floor(Math.random() * L.length)]).join('');
+  const CODE = pick(), NOPE = pick();
   const [a, b, c, late] = ['Abu', 'Sara', 'Omar', 'Late'].map(client);
-  await Promise.all([a, b, c, late].map(x => x.connect()));
+  const ghost = client('Ghost');
+  await ghost.connect(NOPE);
+  ghost.send({ t: 'join', name: 'Ghost' });
+  await until(() => ghost.errors.length === 1, 'bad room error');
+  assert.strictEqual(ghost.errors[0].code, 'noroom');
 
-  late.send({ t: 'join', code: 'ZZZZ', name: 'Late' });
-  await until(() => late.errors.length === 1, 'bad room error');
-  assert.strictEqual(late.errors[0].code, 'noroom');
-
+  await a.connect(CODE);
   a.send({ t: 'create', name: 'Abu' });
   await until(() => a.code, 'room created');
-  b.send({ t: 'join', code: a.code.toLowerCase(), name: 'Sara' });
-  c.send({ t: 'join', code: a.code, name: '<b>Omar</b>' });
+  assert.strictEqual(a.code, CODE);
+  await Promise.all([b.connect(CODE.toLowerCase()), c.connect(CODE), late.connect(CODE)]);
+  late.send({ t: 'create', name: 'Late' });
+  await until(() => late.errors.length === 1, 'code already taken');
+  assert.strictEqual(late.errors[0].code, 'taken');
+  b.send({ t: 'join', name: 'Sara' });
+  await until(() => a.state && a.state.room.players.length === 2, 'second player in');
+  c.send({ t: 'join', name: '<b>Omar</b>' });
   await until(() => a.state && a.state.room.players.length === 3, 'lobby has 3');
   assert.strictEqual(a.state.room.players[2].name, 'bOmar/b');   // markup stripped
   assert.strictEqual(a.state.room.hostId, a.you);
@@ -77,7 +90,7 @@ const until = async (fn, what, ms = 20000) => {
   await until(() => c.state.game, 'game started for everyone');
   console.log('  ok lobby, ready states, host-only start');
 
-  late.send({ t: 'join', code: a.code, name: 'Late' });
+  late.send({ t: 'join', name: 'Late' });
   await until(() => late.errors.length === 2, 'late join refused');
   assert.strictEqual(late.errors[1].code, 'started');
 
@@ -88,8 +101,8 @@ const until = async (fn, what, ms = 20000) => {
   const r3 = a.state.game.round;
   await until(() => a.state.game.round > r3 || a.state.game.phase === 'gameOver', 'game keeps moving while she is away');
   const b2 = client('Sara');
-  await b2.connect();
-  b2.send({ t: 'join', code: a.code, token: b.token, name: 'x' });
+  await b2.connect(CODE);
+  b2.send({ t: 'join', token: b.token, name: 'x' });
   await until(() => b2.you === b.you && b2.state && b2.state.game, 'rejoined with same identity');
   console.log('  ok disconnect is auto-played, reconnect restores the seat');
 

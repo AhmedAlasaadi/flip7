@@ -311,6 +311,20 @@ class Game {
     return this.phase;
   }
 
+  // Plain-data copy of the whole game, and its inverse (used to persist rooms).
+  dump() {
+    const o = {};
+    for (const k of Object.keys(this)) if (k !== 'rng') o[k] = this[k];
+    return JSON.parse(JSON.stringify(o));
+  }
+
+  static load(d) {
+    const g = Object.create(Game.prototype);
+    Object.assign(g, JSON.parse(JSON.stringify(d)));
+    g.rng = Math.random;
+    return g;
+  }
+
   countCards() {
     let n = this.deck.length + this.discard.length;
     for (const p of this.players) n += p.nums.length + p.mods.length + p.acts.length + (p.bustCard ? 1 : 0);
