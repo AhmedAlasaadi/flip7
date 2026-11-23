@@ -21,6 +21,8 @@
     'damnnn who are you playing this with other than me? or are you playing with me? either good luck',
   ];
 
+  const EGG_NOTE = 'btw you found the easter egg if your name is feras or ahmed you get a special message and a custom frame and font for your name because were tuff like that';
+
   const S = {
     room: null, game: null, you: null, err: '',
     screen: '', modal: null, note: '', overlayAt: 0, fresh: true, lastSeq: 0, sound: store.get('sound') !== false,
@@ -113,7 +115,7 @@
     if (!left.length) return;
     const pick = left[Math.floor(Math.random() * left.length)];
     store.set('ferasNotes', [...seenNotes, pick]);
-    S.note = FERAS_NOTES[pick];
+    S.note = FERAS_NOTES[pick] + ' ' + EGG_NOTE;
     S.modal = 'note';
   }
 
