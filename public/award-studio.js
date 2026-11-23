@@ -336,9 +336,18 @@
   }
   const painters = {gambler, nerd, luckiest, unluckiest, champion, comeback};
   for (const [key, fn] of Object.entries(painters)) {
+    const originalDraw = SCENES[key].draw;
     SCENES[key].draw = (stage, t, data) => {
+      const required = key === 'unluckiest' ? ['grave', 'coffin', 'gravestone'] : [key];
+      // SVG decoders can take a moment on mobile. Never display an empty frame.
+      if (required.some(assetKey => !images[assetKey].complete || !images[assetKey].naturalWidth)) {
+        return originalDraw(stage, t, data);
+      }
       try { fn(stage, Math.max(0,t),data); }
-      catch(err) { console.error('Award Studio illustration failed for '+key,err); }
+      catch(err) {
+        console.error('Award Studio illustration failed for '+key,err);
+        return originalDraw(stage, t, data);
+      }
     };
   }
   window.AwardStudio = { version: '1.0', images, painters };
