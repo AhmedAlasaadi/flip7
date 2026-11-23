@@ -27,6 +27,10 @@ class Room {
     this.game = null;
     this.stepTimer = null;
     this.awayTimer = null;
+    this.leadMs = opts.leadMs == null ? 2800 : opts.leadMs;     // pause between the last card and the awards
+    this.awardMs = opts.awardMs == null ? 9500 : opts.awardMs;  // how long each award is on screen
+    this.ceremony = null;
+    this.cerTimer = null;
     this.touched = Date.now();
   }
 
@@ -35,6 +39,7 @@ class Room {
       code: this.code, hostId: this.hostId, target: this.target,
       players: this.players.map(p => ({ id: p.id, token: p.token, name: p.name, avatar: p.avatar || 0, ready: p.ready, left: !!p.left })),
       game: this.game ? this.game.dump() : null,
+      ceremony: this.ceremony,
     };
   }
 
@@ -43,6 +48,7 @@ class Room {
     r.hostId = d.hostId; r.target = d.target;
     r.players = d.players.map(p => ({ ...p, connected: false, conn: null }));
     r.game = d.game ? Game.load(d.game) : null;
+    r.ceremony = d.ceremony || null;
     return r;
   }
 
@@ -51,7 +57,8 @@ class Room {
   broadcast() {
     const base = {
       t: 'state',
-      room: { code: this.code, hostId: this.hostId, target: this.target, players: this.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar || 0, ready: p.ready, connected: p.connected })) },
+      room: { code: this.code, hostId: this.hostId, target: this.target, players: this.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar || 0, ready: p.ready, connected: p.connected })),
+        ceremony: this.ceremony ? { idx: this.ceremony.idx, n: this.ceremony.n, done: this.ceremony.done, elapsed: Date.now() - this.ceremony.at } : null },
       game: this.game ? this.game.view() : null,
     };
     for (const p of this.players) if (p.conn) tx(p.conn, { ...base, you: p.id });
@@ -67,9 +74,45 @@ class Room {
       const r = this.game.step();
       this.broadcast();
       if (r === 'more') this.stepTimer = setTimeout(tick, this.stepMs);
+      else if (r === 'gameOver') this.startCeremony();
       else this.watchAway();
     };
     tick();
+  }
+
+  // ----- awards ceremony: one shared timeline, so every player sees the same award at the same time -----
+  startCeremony() {
+    if (this.ceremony) return;
+    const n = (this.game.awards || []).length;
+    this.ceremony = { idx: -1, n, done: n === 0, at: Date.now(), skips: [], skipAll: [] };
+    this.broadcast();
+    if (n) this.cerTimer = setTimeout(() => this.nextAward(), this.leadMs);
+  }
+
+  nextAward() {
+    clearTimeout(this.cerTimer); this.cerTimer = null;
+    const c = this.ceremony;
+    if (!c || c.done) return;
+    c.idx++; c.at = Date.now(); c.skips = [];
+    if (c.idx >= c.n) { c.done = true; this.broadcast(); return; }
+    this.broadcast();
+    this.cerTimer = setTimeout(() => this.nextAward(), this.awardMs);
+    this.checkSkips();
+  }
+
+  // Move on early once every connected player has skipped the current award.
+  checkSkips() {
+    const c = this.ceremony;
+    if (!c || c.done || c.idx < 0) return;
+    const live = this.players.filter(p => p.connected);
+    if (live.length && live.every(p => c.skipAll.includes(p.id) || c.skips.includes(p.id))) this.nextAward();
+  }
+
+  resumeCeremony() {
+    const c = this.ceremony;
+    if (!c || c.done || this.cerTimer) return;
+    const left = (c.idx < 0 ? this.leadMs : this.awardMs) - (Date.now() - c.at);
+    this.cerTimer = setTimeout(() => this.nextAward(), Math.max(0, left));
   }
 
   // If the game is waiting on someone who is disconnected, play for them after a grace period.
@@ -104,7 +147,7 @@ class Room {
   }
 
   destroy() {
-    clearTimeout(this.stepTimer); clearTimeout(this.awayTimer);
+    clearTimeout(this.stepTimer); clearTimeout(this.awayTimer); clearTimeout(this.cerTimer);
     for (const p of this.players) clearTimeout(p.dropTimer);
     if (this.opts.onEmpty) this.opts.onEmpty(this);
   }
@@ -128,6 +171,7 @@ class Room {
     this.armLobbyDrops();
     if (this.game && this.game.phase === 'auto' && !this.stepTimer) this.pump();   // resume after a restore
     else this.watchAway();
+    this.resumeCeremony();
   }
 
   join(conn, m, creating) {
@@ -149,6 +193,7 @@ class Room {
     pl.conn = null; pl.connected = false;
     this.broadcast();
     if (!this.game) this.armLobbyDrops(); else this.watchAway();
+    this.checkSkips();
   }
 
   handle(conn, m) {
@@ -180,11 +225,24 @@ class Room {
       case 'next': if (g && g.phase === 'roundEnd' && g.startRound()) this.pump(); return;
       case 'again':
         if (!g || g.phase !== 'gameOver') return;
+        clearTimeout(this.cerTimer); this.cerTimer = null; this.ceremony = null;
         this.game = null;
         this.players = this.players.filter(p => p.connected);
         for (const p of this.players) p.ready = false;
         if (!this.players.some(p => p.id === this.hostId)) this.hostId = this.players[0].id;
         return this.broadcast();
+      case 'cskip': {
+        const c = this.ceremony;
+        if (!c || c.done || Number(m.idx) !== c.idx) return;
+        if (!c.skips.includes(pl.id)) c.skips.push(pl.id);
+        return this.checkSkips();
+      }
+      case 'cskipall': {
+        const c = this.ceremony;
+        if (!c || c.done) return;
+        if (!c.skipAll.includes(pl.id)) c.skipAll.push(pl.id);
+        return this.checkSkips();
+      }
       case 'leave':
         conn.room = null; conn.player = null;
         pl.conn = null; pl.connected = false; pl.left = true;

@@ -83,6 +83,7 @@
     } else if (m.t === 'state') {
       const prev = S.game;
       S.room = m.room; S.game = m.game; S.you = m.you; S.sent = false;
+      if (m.room.ceremony) S.cerT0 = performance.now() - m.room.ceremony.elapsed;
       if (S.game) onGame(prev, S.game); else { S.renderAt = 0; S.pendingLog = []; }
       S.fresh = false;
       scheduleRender();
@@ -102,6 +103,7 @@
     hangUp();
     store.del('session');
     S.room = null; S.game = null; S.invite = ''; S.modal = null; S.screen = '';
+    cerHide();
     document.body.classList.remove('my-turn');
     try { history.replaceState(null, '', location.pathname); } catch (e) {}
     render();
@@ -174,7 +176,64 @@
     S.wasMine = mine;
     document.title = mine ? '▶ Your turn — Flip 7' : 'Flip 7 — play online with friends';
     render();
+    syncCeremony();
   }
+
+  // ---------- awards ceremony ----------
+  // The server owns the timeline (which award, and when it started); this just plays the
+  // matching scene at the right offset, so everyone watches the same thing together.
+  const cer = { el: null, run: null, idx: -9, replay: null };
+  const cerOver = () => { const g = S.game, c = S.room && S.room.ceremony; return !g || !g.awards || !g.awards.length || !c || c.done || S.cerDismissed; };
+  const audioFor = () => (S.sound && ac && ac.state === 'running') ? ac : null;
+  function cerEl() {
+    if (cer.el) return cer.el;
+    const el = document.createElement('div');
+    el.id = 'cer'; el.hidden = true;
+    el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Awards ceremony');
+    el.innerHTML = '<canvas aria-hidden="true"></canvas><div class="cer-top"></div><div class="cer-stat" aria-live="polite"></div>'
+      + '<div class="cer-ctl"><button class="btn ghost small" data-c="skip">Skip animation</button><button class="btn ghost small" data-c="all">Skip all</button><button class="btn ghost small" data-c="mute" aria-label="Mute"></button></div>';
+    document.body.appendChild(el);
+    el.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-c]'); if (!b) return;
+      if (b.dataset.c === 'skip') { if (cer.run) cer.run.skip(); if (!cer.replay) send({ t: 'cskip', idx: cer.idx }); }
+      else if (b.dataset.c === 'all') { if (cer.replay) cerHide(); else { S.cerDismissed = true; send({ t: 'cskipall' }); cerHide(); } render(); }
+      else { S.sound = !S.sound; store.set('sound', S.sound); b.textContent = S.sound ? '🔊' : '🔇'; if (cer.run && cer.run.setMuted) cer.run.setMuted(!S.sound); }
+    });
+    return (cer.el = el);
+  }
+  function cerShow(i, offset) {
+    const g = S.game, a = g.awards[i], sc = Awards.SCENES[a.key], info = pInfo(a.pid), el = cerEl();
+    el.hidden = false; document.body.classList.add('in-cer');
+    const top = el.querySelector('.cer-top'), stat = el.querySelector('.cer-stat');
+    top.innerHTML = `<div class="cer-count">Award ${i + 1} of ${g.awards.length}</div><div class="cer-rare" aria-hidden="true">★ ★ ★ ★ ★</div><h2 class="cer-title">${sc.title}</h2><p class="cer-sub">${sc.sub}</p>`;
+    top.classList.remove('go'); void top.offsetWidth; top.classList.add('go');
+    stat.classList.remove('on');
+    stat.innerHTML = `<span class="cer-icon">${sc.icon}</span><span class="cer-who">${nameHTML(info.name, a.pid === S.you ? ' (you)' : '')}<span class="cer-line">${esc(a.stat)}</span></span>`;
+    el.querySelector('[data-c=all]').textContent = cer.replay ? 'Close' : 'Skip all';
+    el.querySelector('[data-c=mute]').textContent = S.sound ? '🔊' : '🔇';
+    if (cer.run) cer.run.stop();
+    cer.idx = i;
+    const ranked = [...g.players].sort((x, y) => y.total - x.total).map(p => ({ name: pInfo(p.id).name, me: p.id === a.pid }));
+    cer.run = Awards.play({
+      canvas: el.querySelector('canvas'), key: a.key, data: { name: info.name, stat: a.stat, ladder: ranked }, offset: Math.max(0, offset), still: reduced(), audio: audioFor,
+      onReveal: () => stat.classList.add('on'),
+      onEnd: () => { if (!cer.replay) return; const next = cer.replay.shift(); if (next == null) { cerHide(); render(); } else cerShow(next, 0); },
+    });
+  }
+  function cerHide() {
+    if (cer.run) { cer.run.stop(); cer.run = null; }
+    if (cer.el) cer.el.hidden = true;
+    cer.idx = -9; cer.replay = null;
+    document.body.classList.remove('in-cer');
+  }
+  function syncCeremony() {
+    const g = S.game, c = S.room && S.room.ceremony;
+    if (!g || g.phase !== 'gameOver') { S.cerDismissed = false; cerHide(); return; }
+    if (cer.replay) return;
+    if (cerOver() || c.idx < 0 || !g.awards[c.idx]) { cerHide(); return; }
+    if (cer.idx !== c.idx) cerShow(c.idx, performance.now() - S.cerT0);
+  }
+  function replayAwards(list) { if (!S.game || !S.game.awards) return; cer.replay = list.slice(1); cerShow(list[0], 0); }
 
   // The pulled card flips face-up over the deck (big, for everyone), then flies to its owner.
   function reveal(d) {
@@ -371,16 +430,25 @@
     if (!g || performance.now() < S.overlayAt) return '';
     if (g.phase !== 'roundEnd' && g.phase !== 'gameOver') return '';
     const over = g.phase === 'gameOver';
+    if (over && !cerOver()) return '';   // the awards ceremony plays first
     const rows = [...g.players].sort((a, b) => b.total - a.total).map((p, i) => {
       const info = pInfo(p.id);
       const how = p.status === 'busted' ? 'Busted' : (p.flip7 ? 'Flip 7! ' : '') + (p.nums.map(c => c.v).join(' + ') || 'no numbers') + (p.mods.some(c => c.k === 'x2') ? ' ×2' : '') + p.mods.filter(c => c.k === 'mod').map(c => ' +' + c.v).join('') + (p.flip7 ? ' +15' : '');
       return `<div class="rrow ${over && p.id === g.winnerId ? 'win' : ''}"><span>${i + 1}</span><span class="who">${nameHTML(info.name, p.id === S.you ? ' (you)' : '')}<small>${esc(how)}</small></span><span class="gain ${p.roundScore ? '' : 'zero'}">+${p.roundScore}</span><span class="tt">${p.total}</span></div>`;
     }).join('');
     if (over) {
-      return `<div class="overlay"><div class="modal"><div class="trophy">🏆</div><h2>${g.winnerId === S.you ? 'You win!' : esc(pInfo(g.winnerId).name) + ' wins!'}</h2><p class="sub">Final scores after ${g.round} rounds</p><div class="res">${rows}</div><div class="row"><button class="btn ghost" data-act="leave-yes">Leave</button><button class="btn primary" data-act="again">Play again</button></div></div></div>`;
+      return `<div class="overlay"><div class="modal"><div class="trophy">🏆</div><h2>${g.winnerId === S.you ? 'You win!' : esc(pInfo(g.winnerId).name) + ' wins!'}</h2><p class="sub">Final scores after ${g.round} rounds</p><div class="res">${rows}</div>${awardsHTML(g)}<div class="row"><button class="btn ghost" data-act="leave-yes">Leave</button><button class="btn primary" data-act="again">Play again</button></div></div></div>`;
     }
     const max = Math.max(...g.players.map(p => p.total));
     return `<div class="overlay"><div class="modal"><h2>Round ${g.round} results</h2><p class="sub">${max >= g.target ? 'Tied at the top — one more round decides it' : `First to ${g.target} wins`}</p><div class="res">${rows}</div><button class="btn primary" style="width:100%" data-act="next">Deal round ${g.round + 1}</button></div></div>`;
+  }
+
+  function awardsHTML(g) {
+    if (!g.awards || !g.awards.length) return '';
+    return `<div class="aw-head"><h3>Awards</h3><button class="linkish" data-act="aw-all">▶ Watch the ceremony again</button></div><div class="awards">${g.awards.map((a, i) => {
+      const sc = Awards.SCENES[a.key];
+      return `<button class="award ${a.pid === S.you ? 'mine' : ''}" data-act="aw-replay" data-i="${i}" aria-label="Replay ${sc.title}"><span class="aw-ic">${sc.icon}</span><span class="aw-tx"><b>${sc.title}${a.pid === S.you ? ' · you' : ''}</b>${nameHTML(pInfo(a.pid).name)}<small>${esc(a.stat)}</small></span><span class="aw-play" aria-hidden="true">▶</span></button>`;
+    }).join('')}</div>`;
   }
 
   function rulesHTML() {
@@ -532,6 +600,8 @@
     stay() { send({ t: 'stay' }); lockActions(); },
     target(el) { send({ t: 'target', pid: el.dataset.pid }); },
     next() { send({ t: 'next' }); },
+    'aw-replay'(el) { replayAwards([Number(el.dataset.i)]); },
+    'aw-all'() { replayAwards(S.game.awards.map((_, i) => i)); },
     again() { send({ t: 'again' }); },
     rules() { S.modal = 'rules'; S.screen = ''; render(); },
     leave() { S.modal = 'leave'; render(); },
@@ -555,7 +625,7 @@
     if (ev.target.id === 'code') S.codeDraft = ev.target.value = ev.target.value.toUpperCase().replace(/[^A-Z]/g, '');
     if (ev.target.id === 'name') S.nameDraft = ev.target.value;
   });
-  document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && S.modal) acts.close(); });
+  document.addEventListener('keydown', ev => { if (ev.key !== 'Escape') return; if (cer.replay) { cerHide(); render(); } else if (S.modal) acts.close(); });
   addEventListener('resize', () => aimDeck(S.game));
 
   render();

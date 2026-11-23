@@ -29,6 +29,8 @@ const rooms = new Map();
 const opts = {
   stepMs: process.env.STEP_MS ? Number(process.env.STEP_MS) : undefined,
   awayMs: process.env.AWAY_MS ? Number(process.env.AWAY_MS) : undefined,
+  leadMs: process.env.LEAD_MS ? Number(process.env.LEAD_MS) : undefined,
+  awardMs: process.env.AWARD_MS ? Number(process.env.AWARD_MS) : undefined,
   onEmpty: room => rooms.delete(room.code),
 };
 

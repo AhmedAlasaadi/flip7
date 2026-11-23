@@ -9,7 +9,7 @@ const WebSocket = require('ws');
 const EXT = process.env.TEST_URL;
 const PORT = 4100 + Math.floor(Math.random() * 500);
 const HOST = EXT || `127.0.0.1:${PORT}`;
-const srv = EXT ? { kill() {}, stdout: { once(_, r) { r(); } } } : spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, STEP_MS: 3, AWAY_MS: 150 }, stdio: ['ignore', 'pipe', 'inherit'] });
+const srv = EXT ? { kill() {}, stdout: { once(_, r) { r(); } } } : spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT, STEP_MS: 3, AWAY_MS: 150, LEAD_MS: 40, AWARD_MS: 250 }, stdio: ['ignore', 'pipe', 'inherit'] });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function client(name) {
@@ -114,6 +114,19 @@ const until = async (fn, what, ms = 20000) => {
   const win = g.players.find(p => p.id === g.winnerId);
   assert(win.total >= 100 && g.players.every(p => p === win || p.total < win.total));
   console.log(`  ok full game played over the network (${g.round} rounds, winner ${win.total})`);
+
+  // Awards: six, from real stats, and the ceremony advances on a shared timeline.
+  assert.deepStrictEqual(g.awards.map(x => x.key), ['gambler', 'nerd', 'luckiest', 'unluckiest', 'champion', 'comeback']);
+  for (const aw of g.awards) assert(g.players.some(p => p.id === aw.pid) && aw.stat.length > 3, 'award has a real recipient and stat');
+  assert.strictEqual(g.awards[4].pid, g.winnerId);
+  const seenIdx = new Set();
+  const watch = setInterval(() => { for (const x of [a, b2, c]) if (x.state.room.ceremony) seenIdx.add(x.state.room.ceremony.idx); }, 5);
+  await until(() => a.state.room.ceremony && a.state.room.ceremony.idx >= 1, 'ceremony advances by itself');
+  assert.strictEqual(a.state.room.ceremony.idx, c.state.room.ceremony.idx);
+  for (const x of [a, b2, c]) x.send({ t: 'cskipall' });                 // everyone skips -> finishes at once
+  await until(() => [a, b2, c].every(x => x.state.room.ceremony.done), 'ceremony ends when all skip', 1500);
+  clearInterval(watch);
+  console.log('  ok awards chosen from stats; ceremony synchronised, skippable (' + g.awards.map(x => x.stat).join(' | ') + ')');
 
   a.send({ t: 'again' });
   await until(() => c.state.game === null && c.state.room.players.every(p => !p.ready), 'back to lobby');

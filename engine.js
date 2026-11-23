@@ -47,6 +47,8 @@ class Game {
     this.players = players.map(p => ({
       id: p.id, name: p.name, total: 0,
       nums: [], mods: [], acts: [], bustCard: null, status: 'active', flip7: false, roundScore: null,
+      // Tracked all game long; the end-of-game awards are chosen from these.
+      stats: { hits: 0, stays: 0, riskyHits: 0, riskySurvived: 0, busts: 0, earlyBusts: 0, lost: 0, saves: 0, flip7s: 0, mods: 0, frozen: 0, ranks: [], gaps: [], rounds: [] },
     }));
     this.deck = opts.deck || shuffle(buildDeck(), this.rng);
     this.discard = [];
@@ -59,6 +61,8 @@ class Game {
     this.flip7By = null;
     this.outOfCards = false;
     this.winner = null;
+    this.awards = null;
+    this.hitBy = null;
     this.uid = 0;
     this.lastDraw = null;
     this.seq = 0;
@@ -130,21 +134,28 @@ class Game {
 
   give(pi, card, f3) {
     const p = this.players[pi];
+    const viaHit = this.hitBy; 
     this.lastDraw = { uid: card.uid, k: card.k, v: card.v, pi };   // so every client can show the pull
     if (card.k === 'num') {
       if (p.nums.some(c => c.v === card.v)) {
         const sc = p.acts.findIndex(c => c.k === 'second');
         if (sc >= 0) {
+          p.stats.saves++;
           this.discard.push(p.acts.splice(sc, 1)[0], card);
           this.say('saved', `${p.name} flipped a second ${card.v} — Second Chance saves them`, p.id);
         } else {
+          p.stats.busts++;
+          p.stats.lost += scoreOf(p);
+          if (p.nums.length <= 3) p.stats.earlyBusts++;
           p.bustCard = card;
           p.status = 'busted';
           this.say('bust', `${p.name} flipped a second ${card.v} and BUSTS`, p.id);
         }
       } else {
         p.nums.push(card);
+        if (this.hitBy && this.hitBy.pi === pi && this.hitBy.risky) p.stats.riskySurvived++;
         if (p.nums.length === 7) {
+          p.stats.flip7s++;
           p.flip7 = true;
           this.flip7By = pi;
           this.say('flip7', `FLIP 7! ${p.name} flipped seven different numbers (+15)`, p.id);
@@ -154,6 +165,7 @@ class Game {
       }
     } else if (card.k === 'mod' || card.k === 'x2') {
       p.mods.push(card);
+      p.stats.mods += card.k === 'x2' ? 2 : 1;
       this.say('deal', `${p.name} flipped ${cardName(card)}`, p.id);
     } else if (card.k === 'second') {
       if (!this.hasSecond(p)) {
@@ -170,6 +182,7 @@ class Game {
       this.say('deal', `${p.name} flipped ${cardName(card)}`, p.id);
       this.stack.push({ t: 'action', card, pi });
     }
+    if (viaHit) this.hitBy = null;
   }
 
   apply(card, ownerIdx, targetIdx) {
@@ -177,6 +190,7 @@ class Game {
     const who = ownerIdx === targetIdx ? 'themself' : t.name;
     t.acts.push(card);
     if (card.k === 'freeze') {
+      if (ownerIdx !== targetIdx) t.stats.frozen++;
       t.status = 'frozen';
       this.say('freeze', ownerIdx === targetIdx
         ? `${o.name} is frozen and banks ${scoreOf(t)}`
@@ -264,6 +278,10 @@ class Game {
   hit(pid) {
     if (this.phase !== 'turn' || this.players[this.turn].id !== pid) return false;
     this.needNext = true;
+    const hp = this.players[this.turn];
+    hp.stats.hits++;
+    if (hp.nums.length >= 4) hp.stats.riskyHits++;
+    this.hitBy = { pi: this.turn, risky: hp.nums.length >= 4 };
     this.stack.push({ t: 'deal', pi: this.turn });
     this.phase = 'auto';
     return true;
@@ -273,6 +291,7 @@ class Game {
     if (this.phase !== 'turn' || this.players[this.turn].id !== pid) return false;
     const p = this.players[this.turn];
     p.status = 'stayed';
+    p.stats.stays++;
     this.needNext = true;
     this.phase = 'auto';
     this.say('stay', `${p.name} stays and banks ${scoreOf(p)}`, p.id);
@@ -303,8 +322,14 @@ class Game {
     }
     const max = Math.max(...this.players.map(p => p.total));
     const leaders = this.players.filter(p => p.total === max);
+    for (const p of this.players) {
+      p.stats.ranks.push(1 + this.players.filter(q => q.total > p.total).length);
+      p.stats.gaps.push(max - p.total);
+      p.stats.rounds.push(p.roundScore);
+    }
     if (max >= this.target && leaders.length === 1) {
       this.winner = leaders[0].id;
+      this.awards = this.computeAwards();
       this.phase = 'gameOver';
       this.say('win', `${leaders[0].name} wins with ${max} points!`, leaders[0].id);
     } else {
@@ -326,6 +351,45 @@ class Game {
     Object.assign(g, JSON.parse(JSON.stringify(d)));
     g.rng = Math.random;
     return g;
+  }
+
+  // The six end-of-game awards, chosen from the tracked statistics. Ties go to the
+  // listed tie-breakers, then to seating order, so every client agrees.
+  computeAwards() {
+    const P = this.players;
+    const ord = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 >> 3 ^ 1) && n % 10] || 'th');
+    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : (w.endsWith('s') ? 'es' : 's')}`;
+    const best = (...keys) => [...P].sort((a, b) => { for (const k of keys) { const d = k(b) - k(a); if (d) return d; } return 0; })[0];
+    const dec = p => p.stats.hits + p.stats.stays;
+    const luck = p => p.stats.saves * 3 + p.stats.flip7s * 4 + p.stats.riskySurvived + p.stats.mods;
+    const woe = p => p.stats.busts * 2 + p.stats.earlyBusts * 2 + p.stats.frozen * 2 + p.stats.lost / 10;
+    const last = a => a[a.length - 1];
+    const climb = p => Math.max(...p.stats.ranks) - last(p.stats.ranks);
+    const closed = p => Math.max(...p.stats.gaps) - last(p.stats.gaps);
+    const out = [];
+    const add = (key, p, stat) => out.push({ key, pid: p.id, stat });
+
+    let p = best(q => q.stats.riskyHits, q => dec(q) ? q.stats.hits / dec(q) : 0, q => q.stats.busts);
+    add('gambler', p, p.stats.riskyHits ? `${plural(p.stats.riskyHits, 'flip')} with 4 or more numbers already showing` : `Chose to flip ${dec(p) ? Math.round(100 * p.stats.hits / dec(p)) : 0}% of the time`);
+
+    p = best(q => dec(q) ? q.stats.stays / dec(q) : 0, q => -q.stats.busts, q => -q.stats.riskyHits);
+    add('nerd', p, `Stayed on ${dec(p) ? Math.round(100 * p.stats.stays / dec(p)) : 0}% of decisions · ${plural(p.stats.busts, 'bust')}`);
+
+    p = best(luck, q => -q.stats.busts, q => q.total);
+    const lucky = [p.stats.flip7s && plural(p.stats.flip7s, 'Flip 7'), p.stats.saves && plural(p.stats.saves, 'Second Chance save'), p.stats.riskySurvived && plural(p.stats.riskySurvived, 'risky flip') + ' survived', p.stats.mods && plural(p.stats.mods, 'bonus card')].filter(Boolean);
+    add('luckiest', p, lucky.length ? lucky.slice(0, 3).join(' · ') : 'Nobody got lucky — this was the least unlucky');
+
+    p = best(woe, q => -q.total);
+    const sad = [plural(p.stats.busts, 'bust'), p.stats.lost && `${p.stats.lost} points lost`, p.stats.frozen && `frozen ${plural(p.stats.frozen, 'time')}`].filter(Boolean);
+    add('unluckiest', p, sad.join(' · '));
+
+    p = P.find(q => q.id === this.winner);
+    add('champion', p, `Won with ${p.total} points in ${plural(this.round, 'round')}`);
+
+    p = best(climb, closed, q => last(q.stats.rounds), q => q.total);
+    add('comeback', p, climb(p) > 0 ? `Climbed from ${ord(Math.max(...p.stats.ranks))} place to ${ord(last(p.stats.ranks))}`
+      : closed(p) > 0 ? `Closed a ${closed(p)}-point gap on the leader` : `Best closing round: +${last(p.stats.rounds)}`);
+    return out;
   }
 
   countCards() {
@@ -352,6 +416,7 @@ class Game {
       deck: this.deck.length, discard: this.discard.length,
       lastDraw: this.lastDraw ? { uid: this.lastDraw.uid, k: this.lastDraw.k, v: this.lastDraw.v, pid: this.players[this.lastDraw.pi].id } : null,
       winnerId: this.winner,
+      awards: this.awards,
       players: this.players.map(p => ({
         id: p.id, total: p.total, status: p.status, flip7: p.flip7,
         nums: p.nums.map(pub), mods: p.mods.map(pub), acts: p.acts.map(pub),

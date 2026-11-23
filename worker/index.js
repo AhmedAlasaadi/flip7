@@ -13,6 +13,8 @@ export class RoomDO extends DurableObject {
     this.opts = {
       stepMs: env.STEP_MS ? Number(env.STEP_MS) : undefined,
       awayMs: env.AWAY_MS ? Number(env.AWAY_MS) : undefined,
+      leadMs: env.LEAD_MS ? Number(env.LEAD_MS) : undefined,
+      awardMs: env.AWARD_MS ? Number(env.AWARD_MS) : undefined,
       onSave: snap => { this.ctx.storage.put('room', snap); },
       onEmpty: () => { this.room = null; this.ctx.storage.deleteAll(); },
     };

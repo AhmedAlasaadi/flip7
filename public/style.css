@@ -327,3 +327,43 @@ body.my-turn .felt { border-color: var(--cyan); box-shadow: inset 0 0 60px #22e0
 .av.vip-mohd::after { background: #ff2740; }
 .av.vip-mohd .badge { top: -12px; left: auto; right: -9px; translate: none; }
 .vipname-mohd { font-family: "Russo One", "Arial Black", Tahoma, sans-serif; font-weight: 400 !important; font-style: italic; letter-spacing: .03em; background-image: linear-gradient(90deg, #ff2740, #ffffff, #ff8a98, #ff2740); filter: drop-shadow(0 0 6px #ff274088) drop-shadow(0 1px 0 #4a0009); }
+
+/* ================= awards ceremony ================= */
+#cer { position: fixed; inset: 0; z-index: 60; background: #000; overflow: hidden; }
+#cer[hidden] { display: none; }
+#cer canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.cer-top { position: absolute; top: 0; left: 0; right: 0; padding: calc(12px + env(safe-area-inset-top)) 16px 34px; text-align: center; pointer-events: none; background: linear-gradient(#000b, #0000); }
+.cer-count { font-size: .78rem; letter-spacing: .22em; text-transform: uppercase; opacity: .85; }
+.cer-rare { color: var(--yellow); letter-spacing: .3em; font-size: .95rem; text-shadow: 0 0 12px #ffd23f; }
+.cer-title { font-family: Bangers, Impact, "Arial Black", sans-serif; font-weight: 400; font-size: clamp(2.1rem, 7.5vw, 3.8rem); letter-spacing: .05em; line-height: 1.05; color: #fff; text-shadow: 0 4px 0 #000, 0 0 28px #ffd23faa; }
+.cer-sub { opacity: .9; font-size: .98rem; text-shadow: 0 2px 4px #000; }
+.cer-top.go .cer-title { animation: cerTitle .85s cubic-bezier(.2, 1.4, .4, 1) both; }
+.cer-top.go .cer-rare { animation: cerStars .9s .15s both; }
+.cer-top.go .cer-sub { animation: fade .5s .6s both; }
+@keyframes cerTitle { 0% { transform: scale(3.2) rotate(-8deg); opacity: 0; filter: blur(10px); } 60% { opacity: 1; filter: none; } 100% { transform: none; } }
+@keyframes cerStars { 0% { letter-spacing: 1.8em; opacity: 0; } 100% { letter-spacing: .3em; opacity: 1; } }
+.cer-stat { position: absolute; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom)); translate: -50% 24px; opacity: 0; transition: opacity .45s, translate .5s cubic-bezier(.2, 1.4, .4, 1); background: #0c1436ee; border: 2px solid var(--yellow); border-radius: 18px; padding: 9px 18px 9px 12px; display: flex; align-items: center; gap: 12px; width: max-content; max-width: min(92vw, 640px); pointer-events: none; box-shadow: 0 10px 40px #000c, 0 0 24px #ffd23f55; }
+.cer-stat.on { opacity: 1; translate: -50% 0; }
+.cer-icon { font-size: 2rem; line-height: 1; }
+.cer-who { display: flex; flex-direction: column; min-width: 0; text-align: left; }
+.cer-who .nm { font-weight: 700; font-size: 1.15rem; overflow-wrap: anywhere; }
+.cer-line { color: #cfd6ff; font-size: .9rem; }
+.cer-ctl { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 12px calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 8px; background: linear-gradient(#0000, #000b); }
+.cer-ctl .btn { background: #0c1436cc; box-shadow: inset 0 0 0 2px #ffffff55; }
+body.in-cer #callout { display: none; }
+
+.aw-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 8px; }
+.aw-head h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: var(--mute); }
+.awards { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 16px; }
+.award { display: flex; align-items: center; gap: 9px; text-align: left; background: var(--panel2); border: 2px solid transparent; border-radius: 12px; padding: 8px 10px; min-width: 0; transition: border-color .15s, transform .1s; }
+.award:hover { border-color: var(--yellow); transform: translateY(-1px); }
+.award:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+.award.mine { border-color: var(--yellow); background: #ffd23f1f; }
+.aw-ic { font-size: 1.6rem; line-height: 1; }
+.aw-tx { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.aw-tx b { font-size: .68rem; letter-spacing: .08em; color: var(--yellow); }
+.aw-tx .nm { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aw-tx small { color: var(--mute); font-size: .72rem; line-height: 1.2; }
+.aw-play { color: var(--mute); font-size: .8rem; }
+@media (max-width: 520px) { .awards { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .cer-top.go .cer-title, .cer-top.go .cer-rare, .cer-top.go .cer-sub { animation: none; } .cer-stat { transition: none; } }
