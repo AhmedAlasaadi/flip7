@@ -60,6 +60,7 @@ class Game {
     this.outOfCards = false;
     this.winner = null;
     this.uid = 0;
+    this.lastDraw = null;
     this.seq = 0;
     this.log = [];
   }
@@ -87,6 +88,7 @@ class Game {
     this.needNext = true;
     this.flip7By = null;
     this.outOfCards = false;
+    this.lastDraw = null;
     this.phase = 'auto';
     this.say('round', `Round ${this.round} — ${this.players[this.dealer].name} deals`, this.players[this.dealer].id);
     return true;
@@ -128,6 +130,7 @@ class Game {
 
   give(pi, card, f3) {
     const p = this.players[pi];
+    this.lastDraw = { uid: card.uid, k: card.k, v: card.v, pi };   // so every client can show the pull
     if (card.k === 'num') {
       if (p.nums.some(c => c.v === card.v)) {
         const sc = p.acts.findIndex(c => c.k === 'second');
@@ -347,6 +350,7 @@ class Game {
       chooser,
       flip3: f3 ? { pid: this.players[f3.pi].id, left: f3.left, pending: f3.pending.map(pub) } : null,
       deck: this.deck.length, discard: this.discard.length,
+      lastDraw: this.lastDraw ? { uid: this.lastDraw.uid, k: this.lastDraw.k, v: this.lastDraw.v, pid: this.players[this.lastDraw.pi].id } : null,
       winnerId: this.winner,
       players: this.players.map(p => ({
         id: p.id, total: p.total, status: p.status, flip7: p.flip7,

@@ -11,6 +11,8 @@ const rid = n => {
   return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
 };
 const cleanName = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 16) || 'Player';
+const AVATARS = 12;
+const cleanAvatar = v => { const n = Math.floor(Number(v)); return n >= 0 && n < AVATARS ? n : 0; };
 const tx = (conn, msg) => { try { if (conn) conn.send(JSON.stringify(msg)); } catch (e) {} };
 
 class Room {
@@ -31,7 +33,7 @@ class Room {
   snapshot() {
     return {
       code: this.code, hostId: this.hostId, target: this.target,
-      players: this.players.map(p => ({ id: p.id, token: p.token, name: p.name, ready: p.ready, left: !!p.left })),
+      players: this.players.map(p => ({ id: p.id, token: p.token, name: p.name, avatar: p.avatar || 0, ready: p.ready, left: !!p.left })),
       game: this.game ? this.game.dump() : null,
     };
   }
@@ -49,7 +51,7 @@ class Room {
   broadcast() {
     const base = {
       t: 'state',
-      room: { code: this.code, hostId: this.hostId, target: this.target, players: this.players.map(p => ({ id: p.id, name: p.name, ready: p.ready, connected: p.connected })) },
+      room: { code: this.code, hostId: this.hostId, target: this.target, players: this.players.map(p => ({ id: p.id, name: p.name, avatar: p.avatar || 0, ready: p.ready, connected: p.connected })) },
       game: this.game ? this.game.view() : null,
     };
     for (const p of this.players) if (p.conn) tx(p.conn, { ...base, you: p.id });
@@ -135,7 +137,7 @@ class Room {
     }
     if (this.game) return tx(conn, { t: 'error', code: 'started', msg: 'That game has already started.' });
     if (this.players.length >= MAX_PLAYERS) return tx(conn, { t: 'error', code: 'full', msg: 'That room is full.' });
-    const pl = { id: rid(4), token: rid(12), name: cleanName(m.name), ready: false, connected: true, conn: null };
+    const pl = { id: rid(4), token: rid(12), name: cleanName(m.name), avatar: cleanAvatar(m.avatar), ready: false, connected: true, conn: null };
     this.players.push(pl);
     if (creating || !this.hostId) this.hostId = pl.id;
     this.attach(conn, pl);
@@ -152,6 +154,9 @@ class Room {
   handle(conn, m) {
     const pl = conn.player, g = this.game;
     switch (m.t) {
+      case 'avatar':
+        pl.avatar = cleanAvatar(m.avatar);
+        return this.broadcast();
       case 'ready':
         if (g) return;
         pl.ready = !!m.ready;
