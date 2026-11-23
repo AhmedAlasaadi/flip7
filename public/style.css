@@ -320,3 +320,10 @@ body.my-turn .felt { border-color: var(--cyan); box-shadow: inset 0 0 60px #22e0
 .av.vip-sultan::after { background: #12e29a; }
 .av.vip-sultan .badge { top: -13px; font-size: 14px; }
 .vipname-sultan { font-family: "Reem Kufi", "Noto Kufi Arabic", "Segoe UI", Tahoma, sans-serif; font-weight: 700 !important; letter-spacing: .03em; font-size: 1.08em; background-image: linear-gradient(90deg, #12e29a, #ffd23f, #b8ffe0, #12e29a); filter: drop-shadow(0 0 5px #12e29a77) drop-shadow(0 1px 0 #053a26); }
+
+/* Mohammed / Mohamed: red-and-white hexagon, bold italic name */
+.av.vip-mohd { margin: 6px; }
+.av.vip-mohd::before { background: conic-gradient(#ff2740, #ffffff, #ff2740, #ffb3bd, #c4001a, #ffffff, #ff2740); animation-duration: 2.6s; inset: -8px; border-radius: 0; clip-path: polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%); }
+.av.vip-mohd::after { background: #ff2740; }
+.av.vip-mohd .badge { top: -12px; left: auto; right: -9px; translate: none; }
+.vipname-mohd { font-family: "Russo One", "Arial Black", Tahoma, sans-serif; font-weight: 400 !important; font-style: italic; letter-spacing: .03em; background-image: linear-gradient(90deg, #ff2740, #ffffff, #ff8a98, #ff2740); filter: drop-shadow(0 0 6px #ff274088) drop-shadow(0 1px 0 #4a0009); }

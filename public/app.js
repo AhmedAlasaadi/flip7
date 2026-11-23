@@ -14,7 +14,7 @@
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Special players: a custom name font and avatar frame.
-  const vipOf = name => /feras/i.test(name || '') ? 'feras' : /supa\s*ahmed/i.test(name || '') ? 'supa' : /sultan|سلطان/i.test(name || '') ? 'sultan' : '';
+  const vipOf = name => /feras/i.test(name || '') ? 'feras' : /supa\s*ahmed/i.test(name || '') ? 'supa' : /sultan|سلطان/i.test(name || '') ? 'sultan' : /moham+ed|محمد/i.test(name || '') ? 'mohd' : '';
   const FERAS_NOTES = [
     'hey i made this game cuz of you LMAOO thanks alot broski have fun',
     'good luck in this game and just because your pro im lowering your chances of good cards (im joking)',
@@ -111,8 +111,9 @@
   const NOTES = {
     feras: FERAS_NOTES.map(t => t + ' ' + EGG_NOTE),
     sultan: ['يا هلا! بالتوفيق يا خوي، وترى برمجتها عشان تخسر 😂 أمزح'],
+    mohd: ['hi msg 310 😉'],
   };
-  const noteKey = name => /feras/i.test(name || '') ? 'feras' : /sultan|سلطان/i.test(name || '') ? 'sultan' : '';
+  const noteKey = name => { const v = vipOf(name); return NOTES[v] ? v : ''; };
   function ferasNote() {
     const who = noteKey(store.get('name'));
     if (!who) return;
@@ -288,7 +289,7 @@
   const pInfo = id => (S.room && S.room.players.find(p => p.id === id)) || { name: '—', avatar: 0, connected: true };
   function avatarHTML(name, idx) {
     const a = AVATARS[idx] || AVATARS[0], v = vipOf(name);
-    return `<span class="av ${v ? 'vip vip-' + v : ''}" style="--h:${a[1]}"><span class="face">${a[0]}</span>${v ? `<span class="badge">${v === 'feras' ? '👑' : v === 'supa' ? '⚡' : '🦅'}</span>` : ''}</span>`;
+    return `<span class="av ${v ? 'vip vip-' + v : ''}" style="--h:${a[1]}"><span class="face">${a[0]}</span>${v ? `<span class="badge">${v === 'feras' ? '👑' : v === 'supa' ? '⚡' : v === 'sultan' ? '🦅' : '⭐'}</span>` : ''}</span>`;
   }
   const nameHTML = (name, suffix = '') => { const v = vipOf(name); return `<span class="nm ${v ? 'vipname vipname-' + v : ''}">${esc(name)}${suffix}</span>`; };
 
@@ -357,9 +358,10 @@
   }
 
   function noteHTML() {
-    const ar = S.noteWho === 'sultan';
-    const head = ar ? '<h2 class="vipname vipname-sultan" lang="ar" dir="rtl">يا هلا سلطان</h2>' : '<h2 class="vipname vipname-feras">Yo Feras</h2>';
-    return `<div class="overlay"><div class="modal note"><div class="trophy">${ar ? '🦅' : '👑'}</div>${head}<p class="notetext" ${ar ? 'lang="ar" dir="rtl"' : ''}>${esc(S.note)}</p><button class="btn primary" style="width:100%" data-act="close">${ar ? 'يلا نلعب' : "Let's play"}</button></div></div>`;
+    const who = S.noteWho, ar = who === 'sultan';
+    const title = { feras: 'Yo Feras', sultan: 'يا هلا سلطان', mohd: 'Yo Mohammed' }[who];
+    const icon = { feras: '👑', sultan: '🦅', mohd: '⭐' }[who];
+    return `<div class="overlay"><div class="modal note"><div class="trophy">${icon}</div><h2 class="vipname vipname-${who}" ${ar ? 'lang="ar" dir="rtl"' : ''}>${title}</h2><p class="notetext" ${ar ? 'lang="ar" dir="rtl"' : ''}>${esc(S.note)}</p><button class="btn primary" style="width:100%" data-act="close">${ar ? 'يلا نلعب' : "Let's play"}</button></div></div>`;
   }
 
   function overlayHTML(g) {
