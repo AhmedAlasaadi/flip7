@@ -116,9 +116,9 @@ const until = async (fn, what, ms = 20000) => {
   console.log(`  ok full game played over the network (${g.round} rounds, winner ${win.total})`);
 
   // Awards: six, from real stats, and the ceremony advances on a shared timeline.
-  assert.deepStrictEqual(g.awards.map(x => x.key), ['gambler', 'nerd', 'luckiest', 'unluckiest', 'champion', 'comeback']);
+  assert.deepStrictEqual(g.awards.map(x => x.key), ['gambler', 'nerd', 'luckiest', 'unluckiest', 'comeback', 'champion']);
   for (const aw of g.awards) assert(g.players.some(p => p.id === aw.pid) && aw.stat.length > 3, 'award has a real recipient and stat');
-  assert.strictEqual(g.awards[4].pid, g.winnerId);
+  assert.strictEqual(g.awards[5].pid, g.winnerId);
   const seenIdx = new Set();
   const watch = setInterval(() => { for (const x of [a, b2, c]) if (x.state.room.ceremony) seenIdx.add(x.state.room.ceremony.idx); }, 5);
   await until(() => a.state.room.ceremony && a.state.room.ceremony.idx >= 1, 'ceremony advances by itself');
