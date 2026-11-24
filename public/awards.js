@@ -805,22 +805,37 @@ window.Awards = (() => {
     c.restore();
   }
 
+  // Timeline: 0-4 s the hall, with the throne's jewels lighting one by one; 4-7 s the walk up to the king;
+  // from 7 s the crown spin, the name and the wink. u() maps real time onto the close-up's own clock.
+  const LATE = 2800, GEM_AT = i => 1000 + i * 222;
+  const champU = t => t < 4000 ? 0 : t < 7000 ? (t - 4000) * 1.4 : t - LATE;
   const champion = {
-    title: 'THE CHAMPION', sub: 'All hail the winner', icon: '👑', reveal: 5700, thumb: 6950,
+    title: 'THE CHAMPION', sub: 'All hail the winner', icon: '👑', reveal: 8500, thumb: 9750, dur: 10800,
     cues() {
-      const q = [], MAJ = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19];
-      // the long push-in: pedal note, timpani, and a snare roll that tightens
-      q.push([0, s => s.pad([N(36), N(43), N(48), N(55)], 0, 4.35, 0.075, { cut: 500, cut2: 1800, a: 2.8, rel: 0.2, rev: 0.45 })]);
-      [[0, 36], [1200, 43], [2300, 36], [3200, 43], [3800, 36]].forEach(([t, m]) => q.push([t, s => s.kick(0, 0.13, { f: N(m) * 2.2, f2: N(m), dur: 1.0, rev: 0.4 })]));
-      for (let t = 0, gap = 120, k = 0; t < 4200; t += gap, gap = Math.max(38, gap * 0.95), k++) { const v = 0.06 + 0.14 * Math.pow(t / 4200, 1.4); q.push([t, s => { s.noise(0, 0.05, v, 1900, 'bandpass', { q: 0.8, rev: 0.18, pan: k % 2 ? 0.12 : -0.12 }); if (k % 4 === 0) s.tone(185, 0, 0.04, 'triangle', v * 0.5, 150); }]); }
-      GEMS.forEach(([gx], i) => q.push([1700 + i * 160, s => s.bell(N(72 + MAJ[i]), 0, 1.0, 0.1, { pan: cl(gx / 200, -0.8, 0.8), rev: 0.65 })]));
+      const q = [], L = [], MAJ = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19];
+      const timp = (m, at, v) => s => { s.kick(at, v, { f: N(m) * 2.2, f2: N(m), dur: 0.9, rev: 0.45 }); };
+      const tpt = (m, at, len, v, o) => s => { s.brass(N(m), at, len, v, Object.assign({ bright: 6, rev: 0.4 }, o)); };
+      // 1. the throne room (0-4 s): a slow procession. Organ-like pedal, timpani on tonic and dominant,
+      //    a dotted horn call answered a fifth up, and one bell per jewel as it lights.
+      q.push([0, s => s.pad([N(36), N(48), N(55), N(60), N(64)], 0, 4.2, 0.06, { cut: 700, cut2: 1500, a: 0.5, rel: 0.5, rev: 0.6 })]);
+      [[0, 36], [500, 36], [1000, 43], [1500, 43], [2000, 36], [2500, 36], [3000, 43], [3500, 43]].forEach(([t, m], i) => q.push([t, timp(m, 0, i % 2 ? 0.1 : 0.17)]));
+      // horn call: long, short-short, long (C  C C  G), then the answer (E  E E  C')
+      [[0, 60, 0.42], [500, 60, 0.12], [680, 60, 0.12], [1000, 67, 0.8], [2000, 64, 0.42], [2500, 64, 0.12], [2680, 64, 0.12], [3000, 72, 0.8]].forEach(([t, m, len]) => q.push([t, s => { tpt(m, 0, len, 0.075, { pan: -0.25, bright: 4 })(s); tpt(m - 12, 0, len, 0.06, { pan: 0.25, bright: 3 })(s); }]));
+      GEMS.forEach(([gx], i) => q.push([GEM_AT(i), s => { const pan = cl(gx / 200, -0.8, 0.8); s.bell(N(72 + MAJ[i]), 0, 1.3, 0.11, { pan, rev: 0.7 }); s.pluck(N(60 + MAJ[i]), 0, 0.5, 0.07, { pan: -pan, rev: 0.5 }); s.noise(0, 0.05, 0.03, 7000, 'highpass', { pan, rev: 0.5 }); }]));
+      // every jewel flares together
+      q.push([3700, s => { [72, 76, 79, 84, 88, 91].forEach((m, i) => s.bell(N(m), i * 0.018, 1.8, 0.07, { pan: (i - 2.5) * 0.3, rev: 0.8 })); s.cym(0, 1.6, 0.07); }]);
+      // 2. the walk up to the king (4-7 s): snare roll tightening, timpani quickening, brass climbing I - IV - V
+      for (let t = 4000, gap = 120, k = 0; t < 7000; t += gap, gap = Math.max(38, gap * 0.94), k++) { const v = 0.05 + 0.15 * Math.pow((t - 4000) / 3000, 1.4); q.push([t, s => { s.noise(0, 0.05, v, 1900, 'bandpass', { q: 0.8, rev: 0.18, pan: k % 2 ? 0.12 : -0.12 }); if (k % 4 === 0) s.tone(185, 0, 0.04, 'triangle', v * 0.5, 150); }]); }
+      [[4000, 36], [4700, 43], [5300, 36], [5800, 43], [6200, 36], [6500, 43], [6750, 43]].forEach(([t, m]) => q.push([t, timp(m, 0, 0.15)]));
+      [[4000, [48, 55, 60, 64], 0.05], [5000, [53, 57, 60, 65], 0.065], [6000, [55, 59, 62, 67, 71], 0.08]].forEach(([t, ch, v]) => q.push([t, s => ch.forEach((m, i) => s.brass(N(m), 0, 0.95, v, { pan: (i - ch.length / 2) * 0.25, bright: 4 + (t - 4000) / 700, rev: 0.4 }))]));
+      [[6000, 67], [6250, 67], [6500, 71], [6750, 74]].forEach(([t, m]) => q.push([t, tpt(m, 0, 0.2, 0.09, { pan: 0.2, bright: 7 })]));
       // face to face with the king: everything stops, one low note
-      q.push([4200, s => { s.kick(0, 0.4, { f: 90, f2: 34, dur: 0.7, rev: 0.4 }); s.tone(N(36), 0, 1.2, 'sine', 0.1, null, { sus: true, a: 0.02, rel: 0.5, rev: 0.4 }); }]);
+      L.push([4200, s => { s.kick(0, 0.4, { f: 90, f2: 34, dur: 0.7, rev: 0.4 }); s.tone(N(36), 0, 1.2, 'sine', 0.1, null, { sus: true, a: 0.02, rel: 0.5, rev: 0.4 }); }]);
       // the crown spins: three whooshes getting faster and higher, with a shimmer rising under them
-      [[4500, 0.3, 900], [4800, 0.25, 1400], [5060, 0.2, 2000]].forEach(([t, len, f], i) => q.push([t, s => { s.whoosh(0, len, 0.13, f, f * 3, { pan: i % 2 ? 0.5 : -0.5, q: 2 }); s.bell(N(84 + i * 4), len * 0.5, 0.3, 0.05, { rev: 0.6 }); }]));
-      q.push([4500, s => s.riser(0, 0.88, 0.16)]);
+      [[4500, 0.3, 900], [4800, 0.25, 1400], [5060, 0.2, 2000]].forEach(([t, len, f], i) => L.push([t, s => { s.whoosh(0, len, 0.13, f, f * 3, { pan: i % 2 ? 0.5 : -0.5, q: 2 }); s.bell(N(84 + i * 4), len * 0.5, 0.3, 0.05, { rev: 0.6 }); }]));
+      L.push([4500, s => s.riser(0, 0.88, 0.16)]);
       // it stops on the name: crash and fanfare
-      q.push([5400, s => {
+      L.push([5400, s => {
         s.boom(0, 0.55, 1.9); s.cym(0, 2.8, 0.28);
         [[67, 0, 0.12], [67, 0.15, 0.12], [67, 0.3, 0.12]].forEach(([m, at, len]) => { s.brass(N(m), at, len, 0.12, { pan: -0.2 }); s.brass(N(m - 12), at, len, 0.08, { pan: 0.2 }); });
         [[48, 0.1], [60, 0.1], [64, 0.09], [67, 0.1], [72, 0.15], [76, 0.09]].forEach(([m, v], i) => s.brass(N(m), 0.46, 1.1, v, { pan: (i - 2.5) * 0.22, bright: 7.5 }));
@@ -828,27 +843,36 @@ window.Awards = (() => {
         s.pad([N(48), N(55), N(60), N(64), N(67)], 0.46, 3.4, 0.05, { cut: 3000, a: 0.05, rel: 1.2, rev: 0.6 });
       }]);
       // the king looks up... and likes what he sees
-      q.push([5560, s => { s.pluck(N(79), 0, 0.2, 0.09, { rev: 0.4 }); s.pluck(N(84), 0.12, 0.3, 0.1, { rev: 0.4 }); }]);
-      q.push([6000, s => [72, 76, 79, 84].forEach((m, i) => s.pluck(N(m), i * 0.05, 0.6, 0.1, { pan: (i - 1.5) * 0.3, rev: 0.5 }))]);
+      L.push([5560, s => { s.pluck(N(79), 0, 0.2, 0.09, { rev: 0.4 }); s.pluck(N(84), 0.12, 0.3, 0.1, { rev: 0.4 }); }]);
+      L.push([6000, s => [72, 76, 79, 84].forEach((m, i) => s.pluck(N(m), i * 0.05, 0.6, 0.1, { pan: (i - 1.5) * 0.3, rev: 0.5 }))]);
       // the wink
-      q.push([6620, s => { s.bell(N(103), 0, 0.7, 0.09, { pan: 0.25, rev: 0.7 }); s.bell(N(108), 0.05, 0.7, 0.06, { pan: 0.35, rev: 0.7 }); s.tone(700, 0, 0.06, 'sine', 0.08, 1500); }]);
+      L.push([6620, s => { s.bell(N(103), 0, 0.7, 0.09, { pan: 0.25, rev: 0.7 }); s.bell(N(108), 0.05, 0.7, 0.06, { pan: 0.35, rev: 0.7 }); s.tone(700, 0, 0.06, 'sine', 0.08, 1500); }]);
       // closing cadence: IV, V, I
-      q.push([7000, s => {
+      L.push([7000, s => {
         [[[53, 60, 65, 69], 0, 0.26], [[55, 62, 67, 71], 0.28, 0.26], [[48, 60, 64, 67, 72, 79], 0.57, 1.5]].forEach(([ch, at, len]) => ch.forEach((m, i) => s.brass(N(m), at, len, i ? 0.09 : 0.1, { pan: (i - ch.length / 2) * 0.22, bright: 7.5 })));
         s.kick(0, 0.3, { f: N(41) * 2.2, f2: N(41), dur: 0.5 }); s.kick(0.28, 0.3, { f: N(43) * 2.2, f2: N(43), dur: 0.5 }); s.kick(0.57, 0.5, { f: N(36) * 2.2, f2: N(36), dur: 1.4, rev: 0.4 }); s.cym(0.57, 2.2, 0.16);
       }]);
-      for (let t = 5900; t < 8300; t += 230) q.push([t, s => s.bell(N(96 + MAJ[Math.floor(hash(t) * 8)]), 0, 0.4, 0.026, { pan: hash(t, 1) * 2 - 1, rev: 0.6 })]);
+      for (let t = 5900; t < 8300; t += 230) L.push([t, s => s.bell(N(96 + MAJ[Math.floor(hash(t) * 8)]), 0, 0.4, 0.026, { pan: hash(t, 1) * 2 - 1, rev: 0.6 })]);
+      // after the crown lands: cathedral bells pealing down, and a trumpet flourish up to the wink
+      [[8900, 84], [9080, 79], [9260, 76], [9440, 72]].forEach(([t, m], i) => q.push([t, s => { s.bell(N(m), 0, 1.6, 0.07, { pan: i % 2 ? 0.5 : -0.5, rev: 0.8 }); s.bell(N(m - 12), 0, 1.6, 0.05, { pan: i % 2 ? -0.3 : 0.3, rev: 0.8 }); }]));
+      [[9200, 67], [9320, 72], [9440, 76]].forEach(([t, m]) => q.push([t, tpt(m, 0, 0.1, 0.07, { pan: -0.3, bright: 7 })]));
+      // timpani roll into the last chord
+      for (let t = 9800; t < 10360; t += 62) q.push([t, timp(t < 10080 ? 41 : 43, 0, 0.07 + (t - 9800) / 6000)]);
+      q.push([10370, s => { s.bell(N(60), 0, 2.4, 0.09, { rev: 0.85 }); s.bell(N(67), 0, 2.4, 0.06, { pan: 0.4, rev: 0.85 }); s.bell(N(72), 0.02, 2.4, 0.06, { pan: -0.4, rev: 0.85 }); s.pad([N(36), N(48), N(55), N(60), N(64), N(72)], 0, 2.6, 0.05, { cut: 2600, a: 0.03, rel: 1.4, rev: 0.7 }); }]);
+      for (const [t, f] of L) q.push([t + LATE, f]);
       return q;
     },
-    draw(s, t, d) {
+    draw(s, T, d) {
+      const t = champU(T);
       const zoom = eio(seg(t, 0, 4200)), rev = t >= 5400, rp = seg(t, 5400, 6000), out = eio(seg(t, 4900, 5750));
       vgrad(s.c, s, ['#1a0633', '#3d0f66', '#12041f']);
       const c = begin(s);
       // The camera travels from the whole hall right up to the king's face, then eases back a touch for the name.
       // zf frames face + crown + name plaque; zc is the extreme close-up on his eyes and crown before that.
       const zf = Math.min(4.4, (2 * s.vw - 80) / 236), zc = zf * 1.6;
-      const z = lerp(lerp(0.52, zc, zoom), zf, out);
-      const camY = lerp(lerp(60, -122, zoom), -106, out);
+      const zg = Math.min((2 * s.vw - 50) / 470, (2 * s.vh - 70) / 760), zp = lerp(0.5, zg * 0.9, eio(seg(T, 0, 1100))) + zg * 0.1 * seg(T, 1100, 4000);   // the throne fills the view while its jewels light
+      const z = lerp(lerp(zp, zc, zoom), zf, out);
+      const camY = lerp(lerp(lerp(40, -85, eio(seg(T, 0, 1100))), -122, zoom), -106, out);
       const shake = rev ? Math.sin(t * 0.1) * 9 * (1 - seg(t, 5400, 6100)) : 0;
       // hall (moves slower than the throne: parallax)
       c.save(); c.translate(shake, 0); c.scale(lerp(1, z, 0.45), lerp(1, z, 0.45));
@@ -868,12 +892,17 @@ window.Awards = (() => {
       c.fillStyle = 'rgba(0,0,0,.18)'; for (let yy = -220; yy < 100; yy += 70) for (let xx = -70; xx <= 70; xx += 70) { c.beginPath(); c.arc(xx + ((yy / 70) % 2 ? 35 : 0), yy, 6, 0, TAU); c.fill(); }
       c.fillStyle = gold; for (const sx of [-1, 1]) { rr(c, sx * 178 - 44, 10, 88, 240, 20); c.fill(); c.stroke(); c.beginPath(); c.arc(sx * 178, 8, 38, 0, TAU); c.fill(); c.stroke(); }
       rr(c, -150, 120, 300, 70, 16); c.fillStyle = '#d4183a'; c.fill(); c.stroke();
-      // gems light up one by one on the way in
+      // The jewels: dark at first, then each one catches fire in turn (a ring bursts out of it and its
+      // colour washes over the gold), and finally they all flare together before the camera moves in.
+      const all = seg(T, 3700, 3850) * (1 - seg(T, 3850, 4700));
+      if (T > 600) { c.save(); c.globalCompositeOperation = 'lighter'; GEMS.forEach(([gx, gy, col, r], i) => { const on = seg(T, GEM_AT(i), GEM_AT(i) + 200); if (on <= 0) return; const a2 = 0.16 * on + 0.5 * (1 - seg(T, GEM_AT(i), GEM_AT(i) + 700)) * on + 0.4 * all; const wg = c.createRadialGradient(gx, gy, 2, gx, gy, 190); wg.addColorStop(0, col); wg.addColorStop(1, 'rgba(0,0,0,0)'); c.globalAlpha = Math.min(1, a2); c.fillStyle = wg; c.beginPath(); c.arc(gx, gy, 190, 0, TAU); c.fill(); }); c.restore(); }
       GEMS.forEach(([gx, gy, col, r], i) => {
-        const on = seg(t, 1700 + i * 160, 1700 + i * 160 + 260), lit = on > 0, pulse = 0.75 + 0.25 * Math.sin(t * 0.008 + i);
-        if (lit) { c.save(); c.globalCompositeOperation = 'lighter'; const hg = c.createRadialGradient(gx, gy, 2, gx, gy, r * 3 * pulse); hg.addColorStop(0, col); hg.addColorStop(1, 'rgba(0,0,0,0)'); c.globalAlpha = 0.85 * on; c.fillStyle = hg; c.beginPath(); c.arc(gx, gy, r * 5.5, 0, TAU); c.fill(); c.restore(); }
-        c.save(); c.translate(gx, gy); c.rotate(Math.PI / 4); c.fillStyle = lit ? col : '#4a3a55'; c.strokeStyle = '#2a1500'; c.lineWidth = 4; rr(c, -r, -r, r * 2, r * 2, 5); c.fill(); c.stroke(); c.fillStyle = `rgba(255,255,255,${lit ? 0.85 : 0.2})`; c.fillRect(-r * 0.55, -r * 0.55, r * 0.6, r * 0.6); c.restore();
-        if (lit) sparkle(c, gx, gy, r * (1.6 + (1 - on) * 3) * pulse, t * 0.003 + i, '#fff');
+        const at = GEM_AT(i), on = seg(T, at, at + 200), lit = on > 0, pop = lit ? 1 - seg(T, at, at + 650) : 0, pulse = 0.75 + 0.25 * Math.sin(T * 0.008 + i);
+        if (lit) { c.save(); c.globalCompositeOperation = 'lighter'; const hg = c.createRadialGradient(gx, gy, 2, gx, gy, r * (3 + 3 * pop + 2 * all) * pulse); hg.addColorStop(0, col); hg.addColorStop(1, 'rgba(0,0,0,0)'); c.globalAlpha = 0.9 * on; c.fillStyle = hg; c.beginPath(); c.arc(gx, gy, r * 9, 0, TAU); c.fill(); c.restore(); }
+        if (pop > 0 && pop < 1) { const k = 1 - pop; c.save(); c.globalAlpha = pop; c.strokeStyle = col; c.lineWidth = 5 * pop + 1; c.beginPath(); c.arc(gx, gy, r + k * 95, 0, TAU); c.stroke(); c.strokeStyle = '#fff'; c.lineWidth = 3 * pop; for (let j = 0; j < 8; j++) { const a2 = j * TAU / 8 + i; c.beginPath(); c.moveTo(gx + Math.cos(a2) * (r + k * 30), gy + Math.sin(a2) * (r + k * 30)); c.lineTo(gx + Math.cos(a2) * (r + k * 80), gy + Math.sin(a2) * (r + k * 80)); c.stroke(); } c.restore(); }
+        const sc2 = 1 + 0.55 * pop + 0.3 * all;
+        c.save(); c.translate(gx, gy); c.rotate(Math.PI / 4); c.scale(sc2, sc2); c.fillStyle = lit ? col : '#3a2c45'; c.strokeStyle = '#2a1500'; c.lineWidth = 4; rr(c, -r, -r, r * 2, r * 2, 5); c.fill(); c.stroke(); c.fillStyle = `rgba(255,255,255,${lit ? 0.85 : 0.14})`; c.fillRect(-r * 0.55, -r * 0.55, r * 0.6, r * 0.6); if (pop > 0) { c.fillStyle = `rgba(255,255,255,${pop * 0.9})`; rr(c, -r, -r, r * 2, r * 2, 5); c.fill(); } c.restore();
+        if (lit) sparkle(c, gx, gy, r * (1.6 + pop * 4 + all * 3) * pulse, T * 0.003 + i, '#fff');
       });
       // ----- the king: a stick figure with a cape, ermine collar, sceptre, moustache and crown -----
       const look = eio(seg(t, 5450, 5800)), happy = eio(seg(t, 5850, 6350)), wink = eo(seg(t, 6600, 6720)) - eo(seg(t, 7300, 7450));
@@ -1356,7 +1385,7 @@ window.Awards = (() => {
 
   // Play a scene. opts: { canvas, key, data, offset, audio: () => AudioContext|null, onReveal, onEnd, still }
   function play(opts) {
-    const sc = SCENES[opts.key], data = opts.data;
+    const sc = SCENES[opts.key], data = opts.data, DUR = sc.dur || 8000;
     let t0 = performance.now() - (opts.offset || 0), raf = 0, dead = false, revealed = false, ended = false;
     let snd = sound(opts.audio ? opts.audio() : null);
     const cues = sc.cues(data).sort((a, b) => a[0] - b[0]);

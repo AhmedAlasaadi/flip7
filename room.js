@@ -89,6 +89,12 @@ class Room {
     if (n) this.cerTimer = setTimeout(() => this.nextAward(), this.leadMs);
   }
 
+  // The champion's scene runs longer than the others.
+  awardLen() {
+    const a = (this.game.awards || [])[this.ceremony.idx];
+    return this.awardMs * (a && a.key === 'champion' ? 1.3 : 1);
+  }
+
   nextAward() {
     clearTimeout(this.cerTimer); this.cerTimer = null;
     const c = this.ceremony;
@@ -96,7 +102,7 @@ class Room {
     c.idx++; c.at = Date.now(); c.skips = [];
     if (c.idx >= c.n) { c.done = true; this.broadcast(); return; }
     this.broadcast();
-    this.cerTimer = setTimeout(() => this.nextAward(), this.awardMs);
+    this.cerTimer = setTimeout(() => this.nextAward(), this.awardLen());
     this.checkSkips();
   }
 
@@ -111,7 +117,7 @@ class Room {
   resumeCeremony() {
     const c = this.ceremony;
     if (!c || c.done || this.cerTimer) return;
-    const left = (c.idx < 0 ? this.leadMs : this.awardMs) - (Date.now() - c.at);
+    const left = (c.idx < 0 ? this.leadMs : this.awardLen()) - (Date.now() - c.at);
     this.cerTimer = setTimeout(() => this.nextAward(), Math.max(0, left));
   }
 
