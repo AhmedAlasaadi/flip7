@@ -14,7 +14,7 @@
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Special players: a custom name font and avatar frame.
-  const vipOf = name => /feras/i.test(name || '') ? 'feras' : /supa\s*ahmed/i.test(name || '') ? 'supa' : /sultan|سلطان/i.test(name || '') ? 'sultan' : /(moham+[ae]d|mohd|محمد)\s*(badi|بادي)/i.test(name || '') ? 'mohd' : '';
+  const vipOf = name => /feras/i.test(name || '') ? 'feras' : /supa\s*ahmed/i.test(name || '') ? 'supa' : /sultan|سلطان/i.test(name || '') ? 'sultan' : /(moham+[ae]d|mohd|محمد)\s*(badi|بادي)/i.test(name || '') ? 'mohd' : /bader|بدر/i.test(name || '') ? 'bader' : '';
   const FERAS_NOTES = [
     'hey i made this game cuz of you LMAOO thanks alot broski have fun',
     'good luck in this game and just because your pro im lowering your chances of good cards (im joking)',
@@ -463,7 +463,7 @@
   const pInfo = id => (S.room && S.room.players.find(p => p.id === id)) || { name: '—', avatar: 0, connected: true };
   function avatarHTML(name, idx) {
     const a = AVATARS[idx] || AVATARS[0], v = vipOf(name);
-    return `<span class="av ${v ? 'vip vip-' + v : ''}" style="--h:${a[1]}"><span class="face">${a[0]}</span>${v ? `<span class="badge">${v === 'feras' ? '👑' : v === 'supa' ? '⚡' : v === 'sultan' ? '🦅' : '⭐'}</span>` : ''}</span>`;
+    return `<span class="av ${v ? 'vip vip-' + v : ''}" style="--h:${a[1]}"><span class="face">${a[0]}</span>${v ? `<span class="badge">${v === 'feras' ? '👑' : v === 'supa' ? '⚡' : v === 'sultan' ? '🦅' : v === 'bader' ? '🌈' : '⭐'}</span>` : ''}</span>`;
   }
   const nameHTML = (name, suffix = '') => { const v = vipOf(name); return `<span class="nm ${v ? 'vipname vipname-' + v : ''}">${esc(name)}${suffix}</span>`; };
 
