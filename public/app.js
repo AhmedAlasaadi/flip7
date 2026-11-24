@@ -463,7 +463,7 @@
   const pInfo = id => (S.room && S.room.players.find(p => p.id === id)) || { name: '—', avatar: 0, connected: true };
   function avatarHTML(name, idx) {
     const a = AVATARS[idx] || AVATARS[0], v = vipOf(name);
-    return `<span class="av ${v ? 'vip vip-' + v : ''}" style="--h:${a[1]}"><span class="face">${a[0]}</span>${v ? `<span class="badge">${v === 'feras' ? '👑' : v === 'supa' ? '⚡' : v === 'sultan' ? '🦅' : v === 'bader' ? '🌈' : '⭐'}</span>` : ''}</span>`;
+    return `<span class="av ${v ? 'vip vip-' + v : ''}" style="--h:${a[1]}"><span class="face">${a[0]}</span>${v ? `<span class="badge">${v === 'feras' ? '👑' : v === 'supa' ? '⚡' : v === 'sultan' ? '🦅' : v === 'bader' ? '🎮' : '⭐'}</span>` : ''}</span>`;
   }
   const nameHTML = (name, suffix = '') => { const v = vipOf(name); return `<span class="nm ${v ? 'vipname vipname-' + v : ''}">${esc(name)}${suffix}</span>`; };
 
